@@ -23,7 +23,7 @@ type EstoqueItem = {
   descricao: string;
   marca: string;
   padua: number | null;
-  macae: number | null;
+  itaperuna: number | null;
   campos: number | null;
   valorVarejo: number;
   ultimaAlteracao: string | null;
@@ -78,7 +78,7 @@ function agruparPorSku(registros: EstoqueRegistro[]): EstoqueItem[] {
       descricao: registro.descricao || "Produto sem descrição",
       marca: registro.marca || "",
       padua: null,
-      macae: null,
+      itaperuna: null,
       campos: null,
       valorVarejo: Number(registro.valor_venda || 0),
       ultimaAlteracao: null
@@ -93,7 +93,7 @@ function agruparPorSku(registros: EstoqueRegistro[]): EstoqueItem[] {
     const loja = normalizarLoja(registro.loja);
 
     if (loja === "padua") atual.padua = quantidade;
-    if (loja === "macae") atual.macae = quantidade;
+    if (loja === "itaperuna") atual.itaperuna = quantidade;
     if (loja === "campos") atual.campos = quantidade;
 
     mapa.set(sku, atual);
@@ -103,11 +103,11 @@ function agruparPorSku(registros: EstoqueRegistro[]): EstoqueItem[] {
 }
 
 function valoresCadastrados(item: EstoqueItem) {
-  return [item.padua, item.macae, item.campos].filter((valor): valor is number => valor !== null);
+  return [item.padua, item.itaperuna, item.campos].filter((valor): valor is number => valor !== null);
 }
 
 function totalItem(item: EstoqueItem) {
-  return (item.padua ?? 0) + (item.macae ?? 0) + (item.campos ?? 0);
+  return (item.padua ?? 0) + (item.itaperuna ?? 0) + (item.campos ?? 0);
 }
 
 function compararOrdenacao(a: EstoqueItem, b: EstoqueItem, order: string) {
