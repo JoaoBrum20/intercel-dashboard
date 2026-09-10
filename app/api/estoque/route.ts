@@ -1,22 +1,22 @@
 import { NextResponse } from "next/server";
 
-export async function POST(request: Request) {
-  const webhookUrl = process.env.N8N_ESTOQUE_WEBHOOK_URL;
+const SUPABASE_URL = process.env.SUPABASE_URL || "https://otjwjkrbbzmrsgvhcpkj.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || "sb_publishable_U1aMNi9x_BmiAc8bbvBWSw_xiMcb_OW";
 
-  if (!webhookUrl) {
-    return NextResponse.json(
-      { success: false, error: "N8N_ESTOQUE_WEBHOOK_URL não configurada." },
-      { status: 503 }
-    );
-  }
-
-  const body = await request.json().catch(() => ({}));
-
+export async function POST() {
   try {
-    const response = await fetch(webhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "listar_estoque", ...body }),
+    const params = new URLSearchParams({
+      select: "id,sku,descricao,loja,estoque_atual,valor_venda,marca",
+      order: "sku.asc"
+    });
+
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/INTERCEL_ESTOQUE?${params.toString()}`, {
+      method: "GET",
+      headers: {
+        apikey: SUPABASE_PUBLISHABLE_KEY,
+        Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+        Accept: "application/json"
+      },
       cache: "no-store"
     });
 
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
 
     if (!response.ok) {
       return NextResponse.json(
-        { success: false, error: "Falha ao consultar o n8n.", details: payload },
+        { success: false, error: "Falha ao consultar o estoque no Supabase.", details: payload },
         { status: response.status }
       );
     }
