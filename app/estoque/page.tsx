@@ -15,6 +15,7 @@ type EstoqueItem = {
   itaperuna?: number | null;
   campos?: number | null;
   valorVarejo: number;
+  fornecedores?: string[];
 };
 
 type Pagination = {
@@ -38,6 +39,8 @@ export default function EstoquePage() {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [order, setOrder] = useState("total-desc");
+  const [fornecedor, setFornecedor] = useState("");
+  const [fornecedores, setFornecedores] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(100);
   const [stockItems, setStockItems] = useState<EstoqueItem[]>([]);
@@ -68,7 +71,8 @@ export default function EstoquePage() {
           page,
           pageSize,
           query: debouncedQuery,
-          order
+          order,
+          fornecedor
         }),
         cache: "no-store"
       });
@@ -79,6 +83,7 @@ export default function EstoquePage() {
       }
 
       setStockItems(Array.isArray(payload?.data) ? payload.data : []);
+      setFornecedores(Array.isArray(payload?.fornecedores) ? payload.fornecedores : []);
       setPagination(payload?.pagination || { page: 1, pageSize, filteredCount: 0, totalPages: 1 });
       setStats(payload?.stats || { totalProdutos: 0, estoqueTotal: 0, semEstoque: 0 });
 
@@ -91,7 +96,7 @@ export default function EstoquePage() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedQuery, order, page, pageSize]);
+  }, [debouncedQuery, fornecedor, order, page, pageSize]);
 
   useEffect(() => {
     carregarEstoque();
@@ -99,6 +104,11 @@ export default function EstoquePage() {
 
   function alterarOrdenacao(value: string) {
     setOrder(value);
+    setPage(1);
+  }
+
+  function alterarFornecedor(value: string) {
+    setFornecedor(value);
     setPage(1);
   }
 
@@ -133,8 +143,15 @@ export default function EstoquePage() {
         <div className="toolbar">
           <label className="search-box">
             <Search size={18} />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por produto, código interno ou marca..." />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por produto, código interno, marca ou fornecedor..." />
           </label>
+
+          <select value={fornecedor} onChange={(event) => alterarFornecedor(event.target.value)} className="select-control" aria-label="Filtrar por fornecedor">
+            <option value="">Todos os fornecedores</option>
+            {fornecedores.map((nome) => (
+              <option key={nome} value={nome}>{nome}</option>
+            ))}
+          </select>
 
           <select value={order} onChange={(event) => alterarOrdenacao(event.target.value)} className="select-control" aria-label="Ordenar estoque">
             <option value="total-desc">Maior estoque total</option>
