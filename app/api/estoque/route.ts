@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://otjwjkrbbzmrsgvhcpkj.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || "sb_publishable_U1aMNi9x_BmiAc8bbvBWSw_xiMcb_OW";
 const PAGE_SIZES = new Set([50, 100, 200]);
+const RECENT_ZERO_LIMIT = 200;
 
 type EstoqueViewRow = {
   sku: string;
@@ -45,6 +46,8 @@ function montarOrBusca(query: string) {
 }
 
 function montarOrdenacao(order: string) {
+  if (order === "zero-recent") return "ultima_alteracao.desc.nullslast,sku.asc";
+
   const principal = (() => {
     if (order === "total-asc") return "estoque_total.asc";
     if (order === "min-asc") return "menor_estoque.asc";
@@ -78,6 +81,7 @@ export async function POST(request: Request) {
     const pageSize = PAGE_SIZES.has(requestedPageSize) ? requestedPageSize : 100;
     const query = safeIlikeValue(String(body?.query || "").trim());
     const order = String(body?.order || "total-desc");
+    const zeroRecent = order === "zero-recent";
     const fornecedoresSelecionados = Array.isArray(body?.fornecedores)
       ? body.fornecedores.map((nome: unknown) => String(nome || "").trim()).filter(Boolean)
       : [];
@@ -86,6 +90,10 @@ export async function POST(request: Request) {
       select: "sku,descricao,marca,valor_venda,fornecedores,padua,itaperuna,campos",
       order: montarOrdenacao(order)
     });
+
+    if (zeroRecent) {
+      pageParams.set("estoque_total", "eq.0");
+    }
 
     const filtroBusca = query ? montarOrBusca(query) : "";
     const filtroFornecedores = montarOrFornecedores(fornecedoresSelecionados);
@@ -99,7 +107,8 @@ export async function POST(request: Request) {
     }
 
     const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
+    const maxTo = zeroRecent ? RECENT_ZERO_LIMIT - 1 : Number.MAX_SAFE_INTEGER;
+    const to = Math.min(from + pageSize - 1, maxTo);
 
     const statsParams = new URLSearchParams({ select: "total_produtos,estoque_total,sem_estoque" });
     const fornecedoresParams = new URLSearchParams({ select: "fornecedor" });
@@ -128,7 +137,8 @@ export async function POST(request: Request) {
 
     const contentRange = pageResponse.headers.get("content-range") || "";
     const totalPart = contentRange.split("/")[1];
-    const filteredCount = totalPart && totalPart !== "*" ? Number(totalPart) : 0;
+    const rawFilteredCount = totalPart && totalPart !== "*" ? Number(totalPart) : 0;
+    const filteredCount = zeroRecent ? Math.min(rawFilteredCount, RECENT_ZERO_LIMIT) : rawFilteredCount;
     const totalPages = Math.max(1, Math.ceil(filteredCount / pageSize));
     const safePage = Math.min(page, totalPages);
 
