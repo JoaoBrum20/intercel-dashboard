@@ -91,9 +91,13 @@ td { padding:13px 14px; border-bottom:1px solid var(--line); font-size:13px; col
 tbody tr:hover { background:#fafafa; }
 .product-cell { min-width:260px; color:var(--text); }
 .code-chip { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size:12px; color:#5f6670; }
+.stock-column { text-align:center; }
 .zero-stock { background:var(--danger-bg); color:var(--danger-text); font-weight:700; }
 .negative-chip { display:inline-block; background:var(--danger-bg); color:var(--danger-text); padding:4px 7px; border-radius:6px; font-weight:700; font-size:12px; }
 .table-footer { display:flex; justify-content:space-between; gap:20px; color:var(--muted); font-size:12px; padding:14px 18px; }
+.estoque-footer { align-items:center; flex-wrap:wrap; }
+.estoque-footer-left, .estoque-pagination { display:flex; align-items:center; gap:10px; }
+.page-size-control { min-width:145px; height:38px; }
 
 .two-column { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
 .ranking-list { padding:0 18px 18px; }
@@ -124,4 +128,5 @@ tbody tr:hover { background:#fafafa; }
   .toolbar, .page-header, .table-footer { flex-direction:column; }
   .search-box { max-width:none; }
   .select-control { min-height:42px; }
+  .estoque-footer-left, .estoque-pagination { width:100%; flex-wrap:wrap; }
 }
