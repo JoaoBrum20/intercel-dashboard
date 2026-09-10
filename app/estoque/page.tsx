@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Boxes, ChevronDown, ChevronLeft, ChevronRight, PackageMinus, RefreshCw, Search } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Boxes, ChevronDown, ChevronLeft, ChevronRight, LoaderCircle, PackageMinus, RefreshCw, Search } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
 import { formatCurrency, formatNumber } from "@/lib/format";
@@ -36,6 +36,7 @@ function exibirEstoque(valor?: number | null) {
 }
 
 export default function EstoquePage() {
+  const supplierFilterRef = useRef<HTMLDetailsElement>(null);
   const [query, setQuery] = useState("");
   const [order, setOrder] = useState("total-desc");
   const [fornecedoresSelecionados, setFornecedoresSelecionados] = useState<string[]>([]);
@@ -52,6 +53,7 @@ export default function EstoquePage() {
   const [pagination, setPagination] = useState<Pagination>({ page: 1, pageSize: 100, filteredCount: 0, totalPages: 1 });
   const [stats, setStats] = useState<Stats>({ totalProdutos: 0, estoqueTotal: 0, semEstoque: 0 });
   const [loading, setLoading] = useState(true);
+  const [applying, setApplying] = useState(false);
   const [error, setError] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -91,12 +93,38 @@ export default function EstoquePage() {
       setStockItems([]);
     } finally {
       setLoading(false);
+      setApplying(false);
     }
   }, [appliedFornecedores, appliedOrder, appliedPageSize, appliedQuery, page]);
 
   useEffect(() => {
     carregarEstoque();
   }, [carregarEstoque, refreshKey]);
+
+  useEffect(() => {
+    function fecharAoClicarFora(event: PointerEvent) {
+      const details = supplierFilterRef.current;
+      if (details?.open && event.target instanceof Node && !details.contains(event.target)) {
+        details.open = false;
+      }
+    }
+
+    function fecharComEscape(event: KeyboardEvent) {
+      const details = supplierFilterRef.current;
+      if (event.key === "Escape" && details?.open) {
+        details.open = false;
+        details.querySelector<HTMLElement>("summary")?.focus();
+      }
+    }
+
+    document.addEventListener("pointerdown", fecharAoClicarFora);
+    document.addEventListener("keydown", fecharComEscape);
+
+    return () => {
+      document.removeEventListener("pointerdown", fecharAoClicarFora);
+      document.removeEventListener("keydown", fecharComEscape);
+    };
+  }, []);
 
   const filtrosAlterados = useMemo(() => {
     const atual = [...fornecedoresSelecionados].sort().join("|");
@@ -111,6 +139,9 @@ export default function EstoquePage() {
   }
 
   function aplicarFiltros() {
+    if (loading || !filtrosAlterados) return;
+    setApplying(true);
+    supplierFilterRef.current?.removeAttribute("open");
     setAppliedQuery(query.trim());
     setAppliedOrder(order);
     setAppliedFornecedores(fornecedoresSelecionados);
@@ -134,7 +165,7 @@ export default function EstoquePage() {
         description="Consulte e compare o estoque das lojas de Pádua, Itaperuna e Campos."
         action={
           <button className="button secondary" type="button" onClick={() => setRefreshKey((value) => value + 1)} disabled={loading}>
-            <RefreshCw size={16} /> {loading ? "Atualizando..." : "Atualizar"}
+            <RefreshCw size={16} className={loading && !applying ? "spin" : ""} /> {loading && !applying ? "Atualizando..." : "Atualizar"}
           </button>
         }
       />
@@ -146,15 +177,22 @@ export default function EstoquePage() {
         <StatCard label="Lojas" value="3" helper="Pádua, Itaperuna e Campos" icon={Boxes} />
       </section>
 
-      <section className="panel">
+      <section className="panel" aria-busy={loading}>
         <div className="toolbar estoque-toolbar">
           <label className="search-box">
             <Search size={18} />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por produto, código interno, marca ou fornecedor..." />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && filtrosAlterados && !loading) aplicarFiltros();
+              }}
+              placeholder="Buscar por produto, código interno, marca ou fornecedor..."
+            />
           </label>
 
-          <details className="supplier-filter">
-            <summary>
+          <details ref={supplierFilterRef} className="supplier-filter">
+            <summary aria-label="Filtrar por fornecedores">
               <span>{resumoFornecedores}</span>
               <ChevronDown size={16} />
             </summary>
@@ -185,8 +223,14 @@ export default function EstoquePage() {
             <option value="nome">Nome do produto</option>
           </select>
 
-          <button className="button apply-button" type="button" onClick={aplicarFiltros} disabled={loading || !filtrosAlterados}>
-            Ir
+          <button
+            className="button apply-button"
+            type="button"
+            onClick={aplicarFiltros}
+            disabled={loading || !filtrosAlterados}
+            aria-busy={applying}
+          >
+            {applying ? <><LoaderCircle size={16} className="spin" /> Carregando</> : "Ir"}
           </button>
         </div>
 
