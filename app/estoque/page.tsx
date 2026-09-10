@@ -37,11 +37,21 @@ function exibirEstoque(valor?: number | null) {
   return valor == null ? "N/A" : valor;
 }
 
-function gerarPaginasVisiveis(atual: number, total: number): PageEntry[] {
+function gerarPaginasVisiveis(total: number, inicioBloco: number): PageEntry[] {
   if (total <= 9) return Array.from({ length: total }, (_, i) => i + 1);
-  if (atual <= 5) return [1, 2, 3, 4, 5, 6, "ellipsis-forward", total];
-  if (atual >= total - 4) return [1, "ellipsis-back", total - 5, total - 4, total - 3, total - 2, total - 1, total];
-  return [1, "ellipsis-back", atual - 2, atual - 1, atual, atual + 1, atual + 2, "ellipsis-forward", total];
+
+  const maxInicio = Math.max(2, total - 5);
+  const inicio = Math.min(Math.max(2, inicioBloco), maxInicio);
+  const fim = Math.min(total - 1, inicio + 4);
+  const paginas = Array.from({ length: fim - inicio + 1 }, (_, i) => inicio + i);
+
+  return [
+    1,
+    ...(inicio > 2 ? ["ellipsis-back" as const] : []),
+    ...paginas,
+    ...(fim < total - 1 ? ["ellipsis-forward" as const] : []),
+    total
+  ];
 }
 
 export default function EstoquePage() {
@@ -56,6 +66,7 @@ export default function EstoquePage() {
   const [appliedPageSize, setAppliedPageSize] = useState(100);
   const [fornecedores, setFornecedores] = useState<string[]>([]);
   const [page, setPage] = useState(1);
+  const [pageWindowStart, setPageWindowStart] = useState(2);
   const [stockItems, setStockItems] = useState<EstoqueItem[]>([]);
   const [pagination, setPagination] = useState<Pagination>({ page: 1, pageSize: 100, filteredCount: 0, totalPages: 1 });
   const [stats, setStats] = useState<Stats>({ totalProdutos: 0, estoqueTotal: 0, semEstoque: 0 });
@@ -118,7 +129,10 @@ export default function EstoquePage() {
     return query !== appliedQuery || order !== appliedOrder || pageSize !== appliedPageSize || atual !== aplicado;
   }, [appliedFornecedores, appliedOrder, appliedPageSize, appliedQuery, fornecedoresSelecionados, order, pageSize, query]);
 
-  const paginasVisiveis = useMemo(() => gerarPaginasVisiveis(pagination.page, pagination.totalPages), [pagination.page, pagination.totalPages]);
+  const paginasVisiveis = useMemo(
+    () => gerarPaginasVisiveis(pagination.totalPages, pageWindowStart),
+    [pagination.totalPages, pageWindowStart]
+  );
 
   function alternarFornecedor(nome: string) {
     setFornecedoresSelecionados((atuais) => atuais.includes(nome) ? atuais.filter((item) => item !== nome) : [...atuais, nome]);
@@ -133,19 +147,23 @@ export default function EstoquePage() {
     setAppliedFornecedores(fornecedoresSelecionados);
     setAppliedPageSize(pageSize);
     setPage(1);
+    setPageWindowStart(2);
   }
 
   function irParaPagina(numero: number) {
     if (loading || numero === pagination.page || numero < 1 || numero > pagination.totalPages) return;
     setPage(numero);
+    if (numero === 1) setPageWindowStart(2);
+    else if (numero === pagination.totalPages) setPageWindowStart(Math.max(2, pagination.totalPages - 5));
+    else if (numero < pageWindowStart || numero > pageWindowStart + 4) setPageWindowStart(Math.max(2, numero - 2));
   }
 
-  function pularPaginas(direcao: "back" | "forward") {
-    const salto = 5;
-    const destino = direcao === "back"
-      ? Math.max(1, pagination.page - salto)
-      : Math.min(pagination.totalPages, pagination.page + salto);
-    irParaPagina(destino);
+  function navegarBloco(direcao: "back" | "forward") {
+    const maxInicio = Math.max(2, pagination.totalPages - 5);
+    setPageWindowStart((atual) => direcao === "back"
+      ? Math.max(2, atual - 5)
+      : Math.min(maxInicio, atual + 5)
+    );
   }
 
   const resumoFornecedores = fornecedoresSelecionados.length === 0
@@ -251,10 +269,10 @@ export default function EstoquePage() {
             <div className="page-numbers">
               {paginasVisiveis.map((item, index) => {
                 if (item === "ellipsis-back") {
-                  return <button key={`ellipsis-back-${index}`} type="button" className="page-ellipsis" onClick={() => pularPaginas("back")} disabled={loading} aria-label="Voltar 5 páginas" title="Voltar 5 páginas">…</button>;
+                  return <button key={`ellipsis-back-${index}`} type="button" className="page-ellipsis" onClick={() => navegarBloco("back")} aria-label="Mostrar páginas anteriores" title="Mostrar páginas anteriores">…</button>;
                 }
                 if (item === "ellipsis-forward") {
-                  return <button key={`ellipsis-forward-${index}`} type="button" className="page-ellipsis" onClick={() => pularPaginas("forward")} disabled={loading} aria-label="Avançar 5 páginas" title="Avançar 5 páginas">…</button>;
+                  return <button key={`ellipsis-forward-${index}`} type="button" className="page-ellipsis" onClick={() => navegarBloco("forward")} aria-label="Mostrar próximas páginas" title="Mostrar próximas páginas">…</button>;
                 }
                 return (
                   <button key={item} type="button" className={`page-number ${item === pagination.page ? "active" : ""}`} onClick={() => irParaPagina(item)} disabled={loading} aria-label={`Ir para página ${item}`} aria-current={item === pagination.page ? "page" : undefined}>{item}</button>
