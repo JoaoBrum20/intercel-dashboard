@@ -15,14 +15,6 @@ type EstoqueViewRow = {
   campos?: number | string | null;
 };
 
-function normalizarTexto(valor?: string | null) {
-  return (valor || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toLowerCase();
-}
-
 function separarFornecedores(valor?: string | null) {
   if (!valor) return [];
 
@@ -36,9 +28,20 @@ function safeIlikeValue(value: string) {
   return value.replace(/[,*()]/g, " ").trim();
 }
 
-function montarFiltroOr(termos: string[]) {
-  const filtros = termos.filter(Boolean).map((termo) => `fornecedores.ilike.*${safeIlikeValue(termo)}*`);
-  return filtros.length ? `(${filtros.join(",")})` : "";
+function montarOrFornecedores(termos: string[]) {
+  return termos
+    .filter(Boolean)
+    .map((termo) => `fornecedores.ilike.*${safeIlikeValue(termo)}*`)
+    .join(",");
+}
+
+function montarOrBusca(query: string) {
+  return [
+    `descricao.ilike.*${query}*`,
+    `sku.ilike.*${query}*`,
+    `marca.ilike.*${query}*`,
+    `fornecedores.ilike.*${query}*`
+  ].join(",");
 }
 
 function montarOrdenacao(order: string) {
@@ -84,15 +87,15 @@ export async function POST(request: Request) {
       order: montarOrdenacao(order)
     });
 
-    if (query) {
-      pageParams.set(
-        "or",
-        `(descricao.ilike.*${query}*,sku.ilike.*${query}*,marca.ilike.*${query}*,fornecedores.ilike.*${query}*)`
-      );
-    }
+    const filtroBusca = query ? montarOrBusca(query) : "";
+    const filtroFornecedores = montarOrFornecedores(fornecedoresSelecionados);
 
-    if (fornecedoresSelecionados.length) {
-      pageParams.set("and", `(${montarFiltroOr(fornecedoresSelecionados)})`);
+    if (filtroBusca && filtroFornecedores) {
+      pageParams.set("and", `(or(${filtroBusca}),or(${filtroFornecedores}))`);
+    } else if (filtroBusca) {
+      pageParams.set("or", `(${filtroBusca})`);
+    } else if (filtroFornecedores) {
+      pageParams.set("or", `(${filtroFornecedores})`);
     }
 
     const from = (page - 1) * pageSize;
