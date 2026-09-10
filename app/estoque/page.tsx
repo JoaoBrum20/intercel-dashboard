@@ -31,8 +31,19 @@ type Stats = {
   semEstoque: number;
 };
 
+type PageEntry = number | "ellipsis";
+
 function exibirEstoque(valor?: number | null) {
   return valor == null ? "N/A" : valor;
+}
+
+function gerarPaginasVisiveis(atual: number, total: number): PageEntry[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+
+  if (atual <= 4) return [1, 2, 3, 4, 5, "ellipsis", total];
+  if (atual >= total - 3) return [1, "ellipsis", total - 4, total - 3, total - 2, total - 1, total];
+
+  return [1, "ellipsis", atual - 1, atual, atual + 1, "ellipsis", total];
 }
 
 export default function EstoquePage() {
@@ -41,12 +52,10 @@ export default function EstoquePage() {
   const [order, setOrder] = useState("total-desc");
   const [fornecedoresSelecionados, setFornecedoresSelecionados] = useState<string[]>([]);
   const [pageSize, setPageSize] = useState(100);
-
   const [appliedQuery, setAppliedQuery] = useState("");
   const [appliedOrder, setAppliedOrder] = useState("total-desc");
   const [appliedFornecedores, setAppliedFornecedores] = useState<string[]>([]);
   const [appliedPageSize, setAppliedPageSize] = useState(100);
-
   const [fornecedores, setFornecedores] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const [stockItems, setStockItems] = useState<EstoqueItem[]>([]);
@@ -65,29 +74,18 @@ export default function EstoquePage() {
       const response = await fetch("/api/estoque", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          page,
-          pageSize: appliedPageSize,
-          query: appliedQuery,
-          order: appliedOrder,
-          fornecedores: appliedFornecedores
-        }),
+        body: JSON.stringify({ page, pageSize: appliedPageSize, query: appliedQuery, order: appliedOrder, fornecedores: appliedFornecedores }),
         cache: "no-store"
       });
 
       const payload = await response.json();
-      if (!response.ok || payload?.success === false) {
-        throw new Error(payload?.error || "Não foi possível carregar o estoque.");
-      }
+      if (!response.ok || payload?.success === false) throw new Error(payload?.error || "Não foi possível carregar o estoque.");
 
       setStockItems(Array.isArray(payload?.data) ? payload.data : []);
       setFornecedores(Array.isArray(payload?.fornecedores) ? payload.fornecedores : []);
       setPagination(payload?.pagination || { page: 1, pageSize: appliedPageSize, filteredCount: 0, totalPages: 1 });
       setStats(payload?.stats || { totalProdutos: 0, estoqueTotal: 0, semEstoque: 0 });
-
-      if (payload?.pagination?.page && payload.pagination.page !== page) {
-        setPage(payload.pagination.page);
-      }
+      if (payload?.pagination?.page && payload.pagination.page !== page) setPage(payload.pagination.page);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao carregar estoque.");
       setStockItems([]);
@@ -97,18 +95,13 @@ export default function EstoquePage() {
     }
   }, [appliedFornecedores, appliedOrder, appliedPageSize, appliedQuery, page]);
 
-  useEffect(() => {
-    carregarEstoque();
-  }, [carregarEstoque, refreshKey]);
+  useEffect(() => { carregarEstoque(); }, [carregarEstoque, refreshKey]);
 
   useEffect(() => {
     function fecharAoClicarFora(event: PointerEvent) {
       const details = supplierFilterRef.current;
-      if (details?.open && event.target instanceof Node && !details.contains(event.target)) {
-        details.open = false;
-      }
+      if (details?.open && event.target instanceof Node && !details.contains(event.target)) details.open = false;
     }
-
     function fecharComEscape(event: KeyboardEvent) {
       const details = supplierFilterRef.current;
       if (event.key === "Escape" && details?.open) {
@@ -116,10 +109,8 @@ export default function EstoquePage() {
         details.querySelector<HTMLElement>("summary")?.focus();
       }
     }
-
     document.addEventListener("pointerdown", fecharAoClicarFora);
     document.addEventListener("keydown", fecharComEscape);
-
     return () => {
       document.removeEventListener("pointerdown", fecharAoClicarFora);
       document.removeEventListener("keydown", fecharComEscape);
@@ -132,10 +123,13 @@ export default function EstoquePage() {
     return query !== appliedQuery || order !== appliedOrder || pageSize !== appliedPageSize || atual !== aplicado;
   }, [appliedFornecedores, appliedOrder, appliedPageSize, appliedQuery, fornecedoresSelecionados, order, pageSize, query]);
 
+  const paginasVisiveis = useMemo(
+    () => gerarPaginasVisiveis(pagination.page, pagination.totalPages),
+    [pagination.page, pagination.totalPages]
+  );
+
   function alternarFornecedor(nome: string) {
-    setFornecedoresSelecionados((atuais) =>
-      atuais.includes(nome) ? atuais.filter((item) => item !== nome) : [...atuais, nome]
-    );
+    setFornecedoresSelecionados((atuais) => atuais.includes(nome) ? atuais.filter((item) => item !== nome) : [...atuais, nome]);
   }
 
   function aplicarFiltros() {
@@ -147,6 +141,11 @@ export default function EstoquePage() {
     setAppliedFornecedores(fornecedoresSelecionados);
     setAppliedPageSize(pageSize);
     setPage(1);
+  }
+
+  function irParaPagina(numero: number) {
+    if (loading || numero === pagination.page || numero < 1 || numero > pagination.totalPages) return;
+    setPage(numero);
   }
 
   const resumoFornecedores = fornecedoresSelecionados.length === 0
@@ -184,30 +183,19 @@ export default function EstoquePage() {
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && filtrosAlterados && !loading) aplicarFiltros();
-              }}
+              onKeyDown={(event) => { if (event.key === "Enter" && filtrosAlterados && !loading) aplicarFiltros(); }}
               placeholder="Buscar por produto, código interno, marca ou fornecedor..."
             />
           </label>
 
           <details ref={supplierFilterRef} className="supplier-filter">
-            <summary aria-label="Filtrar por fornecedores">
-              <span>{resumoFornecedores}</span>
-              <ChevronDown size={16} />
-            </summary>
+            <summary aria-label="Filtrar por fornecedores"><span>{resumoFornecedores}</span><ChevronDown size={16} /></summary>
             <div className="supplier-menu">
-              <button type="button" className="supplier-clear" onClick={() => setFornecedoresSelecionados([])}>
-                Limpar seleção
-              </button>
+              <button type="button" className="supplier-clear" onClick={() => setFornecedoresSelecionados([])}>Limpar seleção</button>
               <div className="supplier-options">
                 {fornecedores.map((nome) => (
                   <label key={nome} className="supplier-option">
-                    <input
-                      type="checkbox"
-                      checked={fornecedoresSelecionados.includes(nome)}
-                      onChange={() => alternarFornecedor(nome)}
-                    />
+                    <input type="checkbox" checked={fornecedoresSelecionados.includes(nome)} onChange={() => alternarFornecedor(nome)} />
                     <span>{nome}</span>
                   </label>
                 ))}
@@ -223,13 +211,7 @@ export default function EstoquePage() {
             <option value="nome">Nome do produto</option>
           </select>
 
-          <button
-            className="button apply-button"
-            type="button"
-            onClick={aplicarFiltros}
-            disabled={loading || !filtrosAlterados}
-            aria-busy={applying}
-          >
+          <button className="button apply-button" type="button" onClick={aplicarFiltros} disabled={loading || !filtrosAlterados} aria-busy={applying}>
             {applying ? <><LoaderCircle size={16} className="spin" /> Carregando</> : "Ir"}
           </button>
         </div>
@@ -238,18 +220,7 @@ export default function EstoquePage() {
 
         <div className="table-wrap">
           <table>
-            <thead>
-              <tr>
-                <th>Produto</th>
-                <th>Código interno</th>
-                <th>Marca</th>
-                <th className="stock-column">Pádua</th>
-                <th className="stock-column">Itaperuna</th>
-                <th className="stock-column">Campos</th>
-                <th className="stock-column">Total</th>
-                <th>Valor varejo</th>
-              </tr>
-            </thead>
+            <thead><tr><th>Produto</th><th>Código interno</th><th>Marca</th><th className="stock-column">Pádua</th><th className="stock-column">Itaperuna</th><th className="stock-column">Campos</th><th className="stock-column">Total</th><th>Valor varejo</th></tr></thead>
             <tbody>
               {stockItems.map((item) => {
                 const totalItem = (item.padua ?? 0) + (item.itaperuna ?? 0) + (item.campos ?? 0);
@@ -266,51 +237,42 @@ export default function EstoquePage() {
                   </tr>
                 );
               })}
-              {!loading && !error && stockItems.length === 0 && (
-                <tr><td colSpan={8}>Nenhum produto encontrado.</td></tr>
-              )}
+              {!loading && !error && stockItems.length === 0 && <tr><td colSpan={8}>Nenhum produto encontrado.</td></tr>}
             </tbody>
           </table>
         </div>
 
         <div className="table-footer estoque-footer">
           <div className="estoque-footer-left">
-            <span>
-              {loading
-                ? "Carregando estoque..."
-                : `${inicioExibicao}-${fimExibicao} de ${pagination.filteredCount} produto(s)`}
-            </span>
-
+            <span>{loading ? "Carregando estoque..." : `${inicioExibicao}-${fimExibicao} de ${pagination.filteredCount} produto(s)`}</span>
             <select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))} className="select-control page-size-control" aria-label="Itens por página">
-              <option value={50}>50 por página</option>
-              <option value={100}>100 por página</option>
-              <option value={200}>200 por página</option>
+              <option value={50}>50 por página</option><option value={100}>100 por página</option><option value={200}>200 por página</option>
             </select>
           </div>
 
-          <div className="estoque-pagination">
-            <button
-              className="button secondary"
-              type="button"
-              onClick={() => setPage((value) => Math.max(1, value - 1))}
-              disabled={loading || pagination.page <= 1}
-              aria-label="Página anterior"
-            >
-              <ChevronLeft size={16} /> Anterior
-            </button>
+          <nav className="estoque-pagination" aria-label="Paginação do estoque">
+            <button className="button secondary" type="button" onClick={() => irParaPagina(pagination.page - 1)} disabled={loading || pagination.page <= 1} aria-label="Página anterior"><ChevronLeft size={16} /> Anterior</button>
 
-            <span>Página {pagination.page} de {pagination.totalPages}</span>
+            <div className="page-numbers">
+              {paginasVisiveis.map((item, index) => item === "ellipsis" ? (
+                <span key={`ellipsis-${index}`} className="page-ellipsis" aria-hidden="true">…</span>
+              ) : (
+                <button
+                  key={item}
+                  type="button"
+                  className={`page-number ${item === pagination.page ? "active" : ""}`}
+                  onClick={() => irParaPagina(item)}
+                  disabled={loading}
+                  aria-label={`Ir para página ${item}`}
+                  aria-current={item === pagination.page ? "page" : undefined}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
 
-            <button
-              className="button secondary"
-              type="button"
-              onClick={() => setPage((value) => Math.min(pagination.totalPages, value + 1))}
-              disabled={loading || pagination.page >= pagination.totalPages}
-              aria-label="Próxima página"
-            >
-              Próxima <ChevronRight size={16} />
-            </button>
-          </div>
+            <button className="button secondary" type="button" onClick={() => irParaPagina(pagination.page + 1)} disabled={loading || pagination.page >= pagination.totalPages} aria-label="Próxima página">Próxima <ChevronRight size={16} /></button>
+          </nav>
         </div>
       </section>
     </>
