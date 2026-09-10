@@ -1,21 +1,14 @@
-# Intercel Dashboard
+# Dashboard de Estoque Multi-Loja
 
-Protótipo de um sistema web para centralizar informações de **estoque, produtos e clientes** das lojas da Intercel em **Pádua, Itaperuna e Campos**.
+Sistema web para centralizar informações de **estoque, produtos e clientes** de uma operação com múltiplas unidades.
 
-O projeto foi estruturado para começar simples, ser apresentável ao cliente e evoluir sem precisar reescrever a base.
+O projeto foi estruturado para começar simples, ser apresentável e evoluir sem precisar reescrever a base.
 
-## Objetivo do MVP
+## Status atual
 
-- Exibir uma visão geral do sistema.
-- Consultar estoque consolidado das três lojas.
-- Buscar produto por descrição, código interno ou marca.
-- Ordenar produtos por maior ou menor estoque total.
-- Preparar páginas para mais vendidos, menos vendidos e clientes com queda de compras.
-- Manter credenciais e webhooks fora do navegador.
+A página de estoque já está conectada aos dados reais do banco e não usa mais dados demonstrativos.
 
-> No protótipo, os dados de interface são demonstrativos. A integração real será conectada à API TagPlus via n8n.
-
-## Arquitetura
+Hoje o fluxo principal é:
 
 ```text
 Navegador
@@ -24,88 +17,123 @@ Next.js / Vercel
    ↓
 API interna do Next.js
    ↓
-n8n
-   ↓
-TagPlus - Pádua / Itaperuna / Campos
+Supabase
 ```
 
-A URL real do webhook n8n fica em variável de ambiente **server-side**, evitando expor a infraestrutura diretamente no front-end.
+Os registros são armazenados por **SKU + unidade**, permitindo que o mesmo produto tenha estoques diferentes em cada loja.
+
+Exemplo conceitual:
+
+```text
+SKU-001 | Loja A | 5
+SKU-001 | Loja B | 12
+SKU-001 | Loja C | 3
+```
+
+No front-end esses registros são agrupados por SKU e exibidos em uma única linha.
+
+## Funcionalidades atuais
+
+- Consulta de estoque real.
+- Consolidação de estoque entre três unidades.
+- Busca por descrição, código interno ou marca.
+- Agrupamento dos registros pelo SKU.
+- Exibição do estoque individual por unidade.
+- Cálculo automático do estoque total.
+- Destaque para produtos sem estoque em alguma unidade.
+- Ordenação por:
+  - maior estoque total;
+  - menor estoque total;
+  - menor estoque em uma unidade;
+  - maior estoque em uma unidade;
+  - nome do produto.
+- Paginação interna da consulta ao banco para buscar mais de 1.000 registros.
+- Botão de atualização dos dados.
+
+## Regra de menor estoque
+
+A ordenação de menor estoque não considera apenas o total.
+
+Para cada produto é calculado o menor valor entre as unidades:
+
+```ts
+Math.min(lojaA, lojaB, lojaC)
+```
+
+Assim, um produto com estoque `0 / 50 / 1000` aparece antes de um produto com `5 / 5 / 5`, porque existe uma unidade zerada.
 
 ## Stack
 
 - Next.js 15
 - React 19
 - TypeScript
-- CSS puro
+- CSS
 - lucide-react
-- n8n para orquestração
-- TagPlus como fonte de dados
-- Vercel para deploy
-- GitHub para versionamento
+- Supabase / PostgreSQL
+- Vercel
+- GitHub
+- n8n para integrações e sincronizações externas
 
 ## Estrutura
 
 ```text
 app/
-  api/estoque/        # proxy server-side para o n8n
+  api/estoque/        # consulta server-side do estoque
   estoque/            # consulta consolidada de estoque
   produtos/           # mais/menos vendidos
-  clientes/           # clientes com queda de compras
+  clientes/           # análises de clientes
   relatorios/         # relatórios futuros
   configuracoes/      # configurações futuras
 components/           # componentes reutilizáveis
-lib/                  # tipos, dados mock e utilitários
+lib/                  # tipos e utilitários
 docs/                 # documentação técnica
 ```
+
+## Banco de dados
+
+O estoque utiliza uma estrutura baseada em uma linha por **produto + unidade**.
+
+Campos principais utilizados pelo dashboard:
+
+```text
+sku
+descricao
+loja
+estoque_atual
+valor_venda
+marca
+```
+
+Outros campos de produto e estoque permanecem disponíveis no banco para futuras funcionalidades.
+
+## Segurança
+
+- O front-end utiliza apenas uma chave publicável.
+- Nenhuma chave administrativa deve ser exposta no navegador.
+- A tabela de estoque possui RLS habilitado.
+- O acesso público utilizado pelo dashboard é somente de leitura.
+- Segredos, tokens e URLs internas devem permanecer em variáveis de ambiente server-side.
+- Nomes de clientes, unidades, cidades e outros dados identificáveis não devem ser incluídos na documentação pública.
 
 ## Rodando localmente
 
 ```bash
 npm install
-cp .env.example .env.local
 npm run dev
 ```
 
-Acesse `http://localhost:3000`.
+Acesse:
 
-## Variáveis de ambiente
-
-```env
-N8N_ESTOQUE_WEBHOOK_URL=https://seu-n8n.com/webhook/estoque
+```text
+http://localhost:3000
 ```
-
-Não use `NEXT_PUBLIC_` para tokens, segredos ou URLs internas que você não quer expor no navegador.
-
-## Deploy na Vercel
-
-1. Suba o repositório no GitHub.
-2. Importe o repositório na Vercel.
-3. Cadastre `N8N_ESTOQUE_WEBHOOK_URL` em **Project Settings → Environment Variables**.
-4. Faça o deploy.
-
-## Integração de estoque
-
-A rota `POST /api/estoque` recebe o payload do front, adiciona a ação `listar_estoque` e encaminha ao webhook configurado no n8n.
-
-Exemplo de payload:
-
-```json
-{
-  "busca": "iphone 11",
-  "ordenacao": "total_desc"
-}
-```
-
-O n8n será responsável por consultar as três contas/lojas, normalizar os dados e devolver um único JSON para o Next.js.
 
 ## Próximas etapas
 
-1. Validar layout e funcionalidades com o cliente.
-2. Conectar a página de estoque ao webhook real.
-3. Normalizar produtos entre as três lojas por código interno.
-4. Implementar mais/menos vendidos usando endpoints da TagPlus.
+1. Refinar filtros e ordenações da tela de estoque.
+2. Melhorar paginação e desempenho da tabela no front-end.
+3. Adicionar filtros por categoria, marca e unidade.
+4. Implementar páginas de produtos mais e menos vendidos.
 5. Implementar análise de clientes.
-6. Adicionar autenticação do usuário.
-7. Adicionar cache/histórico em banco somente quando houver necessidade real.
-
-Veja também `docs/ARQUITETURA.md`, `docs/N8N.md` e `docs/API.md`.
+6. Adicionar autenticação de usuário.
+7. Evoluir as rotinas de sincronização com as fontes externas.
