@@ -4,6 +4,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL || "https://otjwjkrbbzmrsgvhcpkj.s
 const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || "sb_publishable_U1aMNi9x_BmiAc8bbvBWSw_xiMcb_OW";
 const SUPABASE_PAGE_SIZE = 1000;
 const PAGE_SIZES = new Set([50, 100, 200]);
+const DIAS_MOVIMENTACAO_RECENTE = 90;
 
 type EstoqueRegistro = {
   id?: number | string;
@@ -13,6 +14,7 @@ type EstoqueRegistro = {
   estoque_atual?: number | string | null;
   valor_venda?: number | string | null;
   marca?: string | null;
+  ultima_alteracao?: string | null;
 };
 
 type EstoqueItem = {
@@ -24,6 +26,7 @@ type EstoqueItem = {
   macae: number | null;
   campos: number | null;
   valorVarejo: number;
+  ultimaAlteracao: string | null;
 };
 
 function normalizarLoja(loja?: string | null) {
@@ -32,6 +35,34 @@ function normalizarLoja(loja?: string | null) {
     .replace(/[\u0300-\u036f]/g, "")
     .trim()
     .toLowerCase();
+}
+
+function timestampData(valor?: string | null) {
+  if (!valor) return null;
+
+  const normalizada = valor.includes("T") ? valor : valor.replace(" ", "T");
+  const timestamp = Date.parse(normalizada);
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
+function dataMaisRecente(atual: string | null, nova?: string | null) {
+  if (!nova) return atual;
+  if (!atual) return nova;
+
+  const atualTs = timestampData(atual);
+  const novaTs = timestampData(nova);
+
+  if (novaTs === null) return atual;
+  if (atualTs === null) return nova;
+  return novaTs > atualTs ? nova : atual;
+}
+
+function teveMovimentacaoRecente(item: EstoqueItem) {
+  const timestamp = timestampData(item.ultimaAlteracao);
+  if (timestamp === null) return false;
+
+  const limite = Date.now() - DIAS_MOVIMENTACAO_RECENTE * 24 * 60 * 60 * 1000;
+  return timestamp >= limite;
 }
 
 function agruparPorSku(registros: EstoqueRegistro[]): EstoqueItem[] {
@@ -49,12 +80,14 @@ function agruparPorSku(registros: EstoqueRegistro[]): EstoqueItem[] {
       padua: null,
       macae: null,
       campos: null,
-      valorVarejo: Number(registro.valor_venda || 0)
+      valorVarejo: Number(registro.valor_venda || 0),
+      ultimaAlteracao: null
     };
 
     if (!atual.descricao && registro.descricao) atual.descricao = registro.descricao;
     if (!atual.marca && registro.marca) atual.marca = registro.marca;
     if (!atual.valorVarejo && registro.valor_venda) atual.valorVarejo = Number(registro.valor_venda || 0);
+    atual.ultimaAlteracao = dataMaisRecente(atual.ultimaAlteracao, registro.ultima_alteracao);
 
     const quantidade = Number(registro.estoque_atual || 0);
     const loja = normalizarLoja(registro.loja);
@@ -77,26 +110,35 @@ function totalItem(item: EstoqueItem) {
   return (item.padua ?? 0) + (item.macae ?? 0) + (item.campos ?? 0);
 }
 
+function compararOrdenacao(a: EstoqueItem, b: EstoqueItem, order: string) {
+  const totalA = totalItem(a);
+  const totalB = totalItem(b);
+  const cadastradosA = valoresCadastrados(a);
+  const cadastradosB = valoresCadastrados(b);
+
+  if (order === "total-asc") return totalA - totalB;
+  if (order === "min-asc") {
+    const menorA = cadastradosA.length ? Math.min(...cadastradosA) : Number.POSITIVE_INFINITY;
+    const menorB = cadastradosB.length ? Math.min(...cadastradosB) : Number.POSITIVE_INFINITY;
+    return menorA - menorB;
+  }
+  if (order === "max-desc") {
+    const maiorA = cadastradosA.length ? Math.max(...cadastradosA) : Number.NEGATIVE_INFINITY;
+    const maiorB = cadastradosB.length ? Math.max(...cadastradosB) : Number.NEGATIVE_INFINITY;
+    return maiorB - maiorA;
+  }
+  if (order === "nome") return a.descricao.localeCompare(b.descricao, "pt-BR");
+  return totalB - totalA;
+}
+
 function ordenarItens(itens: EstoqueItem[], order: string) {
   return [...itens].sort((a, b) => {
-    const totalA = totalItem(a);
-    const totalB = totalItem(b);
-    const cadastradosA = valoresCadastrados(a);
-    const cadastradosB = valoresCadastrados(b);
+    const recenteA = teveMovimentacaoRecente(a);
+    const recenteB = teveMovimentacaoRecente(b);
 
-    if (order === "total-asc") return totalA - totalB;
-    if (order === "min-asc") {
-      const menorA = cadastradosA.length ? Math.min(...cadastradosA) : Number.POSITIVE_INFINITY;
-      const menorB = cadastradosB.length ? Math.min(...cadastradosB) : Number.POSITIVE_INFINITY;
-      return menorA - menorB;
-    }
-    if (order === "max-desc") {
-      const maiorA = cadastradosA.length ? Math.max(...cadastradosA) : Number.NEGATIVE_INFINITY;
-      const maiorB = cadastradosB.length ? Math.max(...cadastradosB) : Number.NEGATIVE_INFINITY;
-      return maiorB - maiorA;
-    }
-    if (order === "nome") return a.descricao.localeCompare(b.descricao, "pt-BR");
-    return totalB - totalA;
+    if (recenteA !== recenteB) return recenteA ? -1 : 1;
+
+    return compararOrdenacao(a, b, order);
   });
 }
 
@@ -111,7 +153,7 @@ export async function POST(request: Request) {
     const order = String(body?.order || "total-desc");
 
     const params = new URLSearchParams({
-      select: "id,sku,descricao,loja,estoque_atual,valor_venda,marca",
+      select: "id,sku,descricao,loja,estoque_atual,valor_venda,marca,ultima_alteracao",
       order: "sku.asc,id.asc"
     });
 
