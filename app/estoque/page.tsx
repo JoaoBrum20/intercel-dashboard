@@ -11,9 +11,9 @@ type EstoqueItem = {
   codigo: string;
   descricao: string;
   marca: string;
-  padua: number | null;
-  macae: number | null;
-  campos: number | null;
+  padua?: number | null;
+  macae?: number | null;
+  campos?: number | null;
   valorVarejo: number;
 };
 
@@ -30,8 +30,8 @@ type Stats = {
   semEstoque: number;
 };
 
-function exibirEstoque(valor: number | null) {
-  return valor === null ? "N/A" : valor;
+function exibirEstoque(valor?: number | null) {
+  return valor == null ? "N/A" : valor;
 }
 
 export default function EstoquePage() {
