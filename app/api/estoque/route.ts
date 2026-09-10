@@ -179,7 +179,9 @@ export async function POST(request: Request) {
     const pageSize = PAGE_SIZES.has(requestedPageSize) ? requestedPageSize : 100;
     const query = String(body?.query || "").trim().toLocaleLowerCase("pt-BR");
     const order = String(body?.order || "total-desc");
-    const fornecedor = normalizarTexto(String(body?.fornecedor || ""));
+    const fornecedoresSelecionados = Array.isArray(body?.fornecedores)
+      ? body.fornecedores.map((nome: unknown) => normalizarTexto(String(nome || ""))).filter(Boolean)
+      : [];
 
     const params = new URLSearchParams({
       select: "id,sku,descricao,loja,estoque_atual,valor_venda,marca,ultima_alteracao,fornecedores",
@@ -241,10 +243,11 @@ export async function POST(request: Request) {
       );
     }
 
-    if (fornecedor) {
-      itens = itens.filter((item) =>
-        item.fornecedores.some((nome) => normalizarTexto(nome) === fornecedor)
-      );
+    if (fornecedoresSelecionados.length) {
+      itens = itens.filter((item) => {
+        const fornecedoresItem = item.fornecedores.map((nome) => normalizarTexto(nome));
+        return fornecedoresSelecionados.some((selecionado: string) => fornecedoresItem.includes(selecionado));
+      });
     }
 
     itens = ordenarItens(itens, order);
