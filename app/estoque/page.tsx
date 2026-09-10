@@ -39,10 +39,8 @@ function exibirEstoque(valor?: number | null) {
 
 function gerarPaginasVisiveis(atual: number, total: number): PageEntry[] {
   if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
-
   if (atual <= 4) return [1, 2, 3, 4, 5, "ellipsis", total];
   if (atual >= total - 3) return [1, "ellipsis", total - 4, total - 3, total - 2, total - 1, total];
-
   return [1, "ellipsis", atual - 1, atual, atual + 1, "ellipsis", total];
 }
 
@@ -69,7 +67,6 @@ export default function EstoquePage() {
   const carregarEstoque = useCallback(async () => {
     setLoading(true);
     setError("");
-
     try {
       const response = await fetch("/api/estoque", {
         method: "POST",
@@ -77,10 +74,8 @@ export default function EstoquePage() {
         body: JSON.stringify({ page, pageSize: appliedPageSize, query: appliedQuery, order: appliedOrder, fornecedores: appliedFornecedores }),
         cache: "no-store"
       });
-
       const payload = await response.json();
       if (!response.ok || payload?.success === false) throw new Error(payload?.error || "Não foi possível carregar o estoque.");
-
       setStockItems(Array.isArray(payload?.data) ? payload.data : []);
       setFornecedores(Array.isArray(payload?.fornecedores) ? payload.fornecedores : []);
       setPagination(payload?.pagination || { page: 1, pageSize: appliedPageSize, filteredCount: 0, totalPages: 1 });
@@ -123,10 +118,7 @@ export default function EstoquePage() {
     return query !== appliedQuery || order !== appliedOrder || pageSize !== appliedPageSize || atual !== aplicado;
   }, [appliedFornecedores, appliedOrder, appliedPageSize, appliedQuery, fornecedoresSelecionados, order, pageSize, query]);
 
-  const paginasVisiveis = useMemo(
-    () => gerarPaginasVisiveis(pagination.page, pagination.totalPages),
-    [pagination.page, pagination.totalPages]
-  );
+  const paginasVisiveis = useMemo(() => gerarPaginasVisiveis(pagination.page, pagination.totalPages), [pagination.page, pagination.totalPages]);
 
   function alternarFornecedor(nome: string) {
     setFornecedoresSelecionados((atuais) => atuais.includes(nome) ? atuais.filter((item) => item !== nome) : [...atuais, nome]);
@@ -180,12 +172,7 @@ export default function EstoquePage() {
         <div className="toolbar estoque-toolbar">
           <label className="search-box">
             <Search size={18} />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => { if (event.key === "Enter" && filtrosAlterados && !loading) aplicarFiltros(); }}
-              placeholder="Buscar por produto, código interno, marca ou fornecedor..."
-            />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && filtrosAlterados && !loading) aplicarFiltros(); }} placeholder="Buscar por produto, código interno, marca ou fornecedor..." />
           </label>
 
           <details ref={supplierFilterRef} className="supplier-filter">
@@ -208,6 +195,7 @@ export default function EstoquePage() {
             <option value="total-asc">Menor estoque total</option>
             <option value="min-asc">Menor estoque em uma loja</option>
             <option value="max-desc">Maior estoque em uma loja</option>
+            <option value="zero-recent">Zerados recentemente</option>
             <option value="nome">Nome do produto</option>
           </select>
 
@@ -252,25 +240,13 @@ export default function EstoquePage() {
 
           <nav className="estoque-pagination" aria-label="Paginação do estoque">
             <button className="button secondary" type="button" onClick={() => irParaPagina(pagination.page - 1)} disabled={loading || pagination.page <= 1} aria-label="Página anterior"><ChevronLeft size={16} /> Anterior</button>
-
             <div className="page-numbers">
               {paginasVisiveis.map((item, index) => item === "ellipsis" ? (
                 <span key={`ellipsis-${index}`} className="page-ellipsis" aria-hidden="true">…</span>
               ) : (
-                <button
-                  key={item}
-                  type="button"
-                  className={`page-number ${item === pagination.page ? "active" : ""}`}
-                  onClick={() => irParaPagina(item)}
-                  disabled={loading}
-                  aria-label={`Ir para página ${item}`}
-                  aria-current={item === pagination.page ? "page" : undefined}
-                >
-                  {item}
-                </button>
+                <button key={item} type="button" className={`page-number ${item === pagination.page ? "active" : ""}`} onClick={() => irParaPagina(item)} disabled={loading} aria-label={`Ir para página ${item}`} aria-current={item === pagination.page ? "page" : undefined}>{item}</button>
               ))}
             </div>
-
             <button className="button secondary" type="button" onClick={() => irParaPagina(pagination.page + 1)} disabled={loading || pagination.page >= pagination.totalPages} aria-label="Próxima página">Próxima <ChevronRight size={16} /></button>
           </nav>
         </div>
