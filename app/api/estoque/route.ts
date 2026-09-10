@@ -15,6 +15,7 @@ type EstoqueRegistro = {
   valor_venda?: number | string | null;
   marca?: string | null;
   ultima_alteracao?: string | null;
+  fornecedores?: string | null;
 };
 
 type EstoqueItem = {
@@ -27,14 +28,39 @@ type EstoqueItem = {
   campos: number | null;
   valorVarejo: number;
   ultimaAlteracao: string | null;
+  fornecedores: string[];
 };
 
-function normalizarLoja(loja?: string | null) {
-  return (loja || "")
+function normalizarTexto(valor?: string | null) {
+  return (valor || "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .trim()
     .toLowerCase();
+}
+
+function normalizarLoja(loja?: string | null) {
+  return normalizarTexto(loja);
+}
+
+function separarFornecedores(valor?: string | null) {
+  if (!valor) return [];
+
+  return valor
+    .split(/[,;|]/)
+    .map((fornecedor) => fornecedor.trim())
+    .filter(Boolean);
+}
+
+function adicionarFornecedores(atual: string[], novos?: string | null) {
+  const mapa = new Map(atual.map((fornecedor) => [normalizarTexto(fornecedor), fornecedor]));
+
+  for (const fornecedor of separarFornecedores(novos)) {
+    const chave = normalizarTexto(fornecedor);
+    if (chave && !mapa.has(chave)) mapa.set(chave, fornecedor);
+  }
+
+  return Array.from(mapa.values()).sort((a, b) => a.localeCompare(b, "pt-BR"));
 }
 
 function timestampData(valor?: string | null) {
@@ -81,13 +107,15 @@ function agruparPorSku(registros: EstoqueRegistro[]): EstoqueItem[] {
       itaperuna: null,
       campos: null,
       valorVarejo: Number(registro.valor_venda || 0),
-      ultimaAlteracao: null
+      ultimaAlteracao: null,
+      fornecedores: []
     };
 
     if (!atual.descricao && registro.descricao) atual.descricao = registro.descricao;
     if (!atual.marca && registro.marca) atual.marca = registro.marca;
     if (!atual.valorVarejo && registro.valor_venda) atual.valorVarejo = Number(registro.valor_venda || 0);
     atual.ultimaAlteracao = dataMaisRecente(atual.ultimaAlteracao, registro.ultima_alteracao);
+    atual.fornecedores = adicionarFornecedores(atual.fornecedores, registro.fornecedores);
 
     const quantidade = Number(registro.estoque_atual || 0);
     const loja = normalizarLoja(registro.loja);
@@ -151,9 +179,10 @@ export async function POST(request: Request) {
     const pageSize = PAGE_SIZES.has(requestedPageSize) ? requestedPageSize : 100;
     const query = String(body?.query || "").trim().toLocaleLowerCase("pt-BR");
     const order = String(body?.order || "total-desc");
+    const fornecedor = normalizarTexto(String(body?.fornecedor || ""));
 
     const params = new URLSearchParams({
-      select: "id,sku,descricao,loja,estoque_atual,valor_venda,marca,ultima_alteracao",
+      select: "id,sku,descricao,loja,estoque_atual,valor_venda,marca,ultima_alteracao,fornecedores",
       order: "sku.asc,id.asc"
     });
 
@@ -192,15 +221,29 @@ export async function POST(request: Request) {
 
     let itens = agruparPorSku(todos);
 
+    const fornecedores = Array.from(
+      new Map(
+        itens
+          .flatMap((item) => item.fornecedores)
+          .map((nome) => [normalizarTexto(nome), nome])
+      ).values()
+    ).sort((a, b) => a.localeCompare(b, "pt-BR"));
+
     const totalProdutos = itens.length;
     const estoqueTotal = itens.reduce((acc, item) => acc + totalItem(item), 0);
     const semEstoque = itens.filter((item) => valoresCadastrados(item).some((qtd) => qtd === 0)).length;
 
     if (query) {
       itens = itens.filter((item) =>
-        [item.descricao, item.codigo, item.marca].some((value) =>
+        [item.descricao, item.codigo, item.marca, ...item.fornecedores].some((value) =>
           value.toLocaleLowerCase("pt-BR").includes(query)
         )
+      );
+    }
+
+    if (fornecedor) {
+      itens = itens.filter((item) =>
+        item.fornecedores.some((nome) => normalizarTexto(nome) === fornecedor)
       );
     }
 
@@ -215,6 +258,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       data,
+      fornecedores,
       pagination: {
         page: safePage,
         pageSize,
