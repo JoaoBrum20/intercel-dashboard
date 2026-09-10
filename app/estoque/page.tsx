@@ -136,18 +136,12 @@ export default function EstoquePage() {
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por produto, código interno ou marca..." />
           </label>
 
-          <select value={order} onChange={(event) => alterarOrdenacao(event.target.value)} className="select-control" aria-label="Ordenação">
+          <select value={order} onChange={(event) => alterarOrdenacao(event.target.value)} className="select-control" aria-label="Ordenar estoque">
             <option value="total-desc">Maior estoque total</option>
             <option value="total-asc">Menor estoque total</option>
             <option value="min-asc">Menor estoque em uma loja</option>
             <option value="max-desc">Maior estoque em uma loja</option>
             <option value="nome">Nome do produto</option>
-          </select>
-
-          <select value={pageSize} onChange={(event) => alterarTamanhoPagina(Number(event.target.value))} className="select-control" aria-label="Itens por página">
-            <option value={50}>50 por página</option>
-            <option value={100}>100 por página</option>
-            <option value={200}>200 por página</option>
           </select>
         </div>
 
@@ -160,10 +154,10 @@ export default function EstoquePage() {
                 <th>Produto</th>
                 <th>Código interno</th>
                 <th>Marca</th>
-                <th>Pádua</th>
-                <th>Itaperuna</th>
-                <th>Campos</th>
-                <th>Total</th>
+                <th className="stock-column">Pádua</th>
+                <th className="stock-column">Itaperuna</th>
+                <th className="stock-column">Campos</th>
+                <th className="stock-column">Total</th>
                 <th>Valor varejo</th>
               </tr>
             </thead>
@@ -175,10 +169,10 @@ export default function EstoquePage() {
                     <td className="product-cell"><strong>{item.descricao}</strong></td>
                     <td><span className="code-chip">{item.codigo}</span></td>
                     <td>{item.marca || "—"}</td>
-                    <td className={item.padua === 0 ? "zero-stock" : ""}>{exibirEstoque(item.padua)}</td>
-                    <td className={item.itaperuna === 0 ? "zero-stock" : ""}>{exibirEstoque(item.itaperuna)}</td>
-                    <td className={item.campos === 0 ? "zero-stock" : ""}>{exibirEstoque(item.campos)}</td>
-                    <td><strong>{totalItem}</strong></td>
+                    <td className={`stock-column ${item.padua === 0 ? "zero-stock" : ""}`}>{exibirEstoque(item.padua)}</td>
+                    <td className={`stock-column ${item.itaperuna === 0 ? "zero-stock" : ""}`}>{exibirEstoque(item.itaperuna)}</td>
+                    <td className={`stock-column ${item.campos === 0 ? "zero-stock" : ""}`}>{exibirEstoque(item.campos)}</td>
+                    <td className="stock-column"><strong>{totalItem}</strong></td>
                     <td>{formatCurrency(item.valorVarejo)}</td>
                   </tr>
                 );
@@ -190,14 +184,22 @@ export default function EstoquePage() {
           </table>
         </div>
 
-        <div className="table-footer" style={{ gap: 12, flexWrap: "wrap" }}>
-          <span>
-            {loading
-              ? "Carregando estoque..."
-              : `${inicioExibicao}-${fimExibicao} de ${pagination.filteredCount} produto(s)`}
-          </span>
+        <div className="table-footer estoque-footer">
+          <div className="estoque-footer-left">
+            <span>
+              {loading
+                ? "Carregando estoque..."
+                : `${inicioExibicao}-${fimExibicao} de ${pagination.filteredCount} produto(s)`}
+            </span>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <select value={pageSize} onChange={(event) => alterarTamanhoPagina(Number(event.target.value))} className="select-control page-size-control" aria-label="Itens por página">
+              <option value={50}>50 por página</option>
+              <option value={100}>100 por página</option>
+              <option value={200}>200 por página</option>
+            </select>
+          </div>
+
+          <div className="estoque-pagination">
             <button
               className="button secondary"
               type="button"
