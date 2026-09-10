@@ -1,20 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Boxes, PackageMinus, RefreshCw, Search } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Boxes, ChevronLeft, ChevronRight, PackageMinus, RefreshCw, Search } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
 import { formatCurrency, formatNumber } from "@/lib/format";
-
-type EstoqueRegistro = {
-  id?: number | string;
-  sku?: string | null;
-  descricao?: string | null;
-  loja?: string | null;
-  estoque_atual?: number | string | null;
-  valor_venda?: number | string | null;
-  marca?: string | null;
-};
 
 type EstoqueItem = {
   id: string;
@@ -27,55 +17,40 @@ type EstoqueItem = {
   valorVarejo: number;
 };
 
-function normalizarLoja(loja?: string | null) {
-  return (loja || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toLowerCase();
-}
+type Pagination = {
+  page: number;
+  pageSize: number;
+  filteredCount: number;
+  totalPages: number;
+};
 
-function agruparPorSku(registros: EstoqueRegistro[]): EstoqueItem[] {
-  const mapa = new Map<string, EstoqueItem>();
-
-  for (const registro of registros) {
-    const sku = String(registro.sku || "").trim();
-    if (!sku) continue;
-
-    const atual = mapa.get(sku) || {
-      id: sku,
-      codigo: sku,
-      descricao: registro.descricao || "Produto sem descrição",
-      marca: registro.marca || "",
-      padua: 0,
-      macae: 0,
-      campos: 0,
-      valorVarejo: Number(registro.valor_venda || 0)
-    };
-
-    if (!atual.descricao && registro.descricao) atual.descricao = registro.descricao;
-    if (!atual.marca && registro.marca) atual.marca = registro.marca;
-    if (!atual.valorVarejo && registro.valor_venda) atual.valorVarejo = Number(registro.valor_venda || 0);
-
-    const quantidade = Number(registro.estoque_atual || 0);
-    const loja = normalizarLoja(registro.loja);
-
-    if (loja === "padua") atual.padua = quantidade;
-    if (loja === "macae") atual.macae = quantidade;
-    if (loja === "campos") atual.campos = quantidade;
-
-    mapa.set(sku, atual);
-  }
-
-  return Array.from(mapa.values());
-}
+type Stats = {
+  totalProdutos: number;
+  estoqueTotal: number;
+  semEstoque: number;
+};
 
 export default function EstoquePage() {
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [order, setOrder] = useState("total-desc");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(100);
   const [stockItems, setStockItems] = useState<EstoqueItem[]>([]);
+  const [pagination, setPagination] = useState<Pagination>({ page: 1, pageSize: 100, filteredCount: 0, totalPages: 1 });
+  const [stats, setStats] = useState<Stats>({ totalProdutos: 0, estoqueTotal: 0, semEstoque: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedQuery(query);
+      setPage(1);
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [query]);
 
   const carregarEstoque = useCallback(async () => {
     setLoading(true);
@@ -85,7 +60,12 @@ export default function EstoquePage() {
       const response = await fetch("/api/estoque", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({
+          page,
+          pageSize,
+          query: debouncedQuery,
+          order
+        }),
         cache: "no-store"
       });
 
@@ -94,48 +74,37 @@ export default function EstoquePage() {
         throw new Error(payload?.error || "Não foi possível carregar o estoque.");
       }
 
-      const bruto = payload?.data;
-      const registros = Array.isArray(bruto)
-        ? bruto
-        : Array.isArray(bruto?.data)
-          ? bruto.data
-          : Array.isArray(bruto?.result)
-            ? bruto.result
-            : [];
+      setStockItems(Array.isArray(payload?.data) ? payload.data : []);
+      setPagination(payload?.pagination || { page: 1, pageSize, filteredCount: 0, totalPages: 1 });
+      setStats(payload?.stats || { totalProdutos: 0, estoqueTotal: 0, semEstoque: 0 });
 
-      setStockItems(agruparPorSku(registros));
+      if (payload?.pagination?.page && payload.pagination.page !== page) {
+        setPage(payload.pagination.page);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao carregar estoque.");
       setStockItems([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [debouncedQuery, order, page, pageSize]);
 
   useEffect(() => {
     carregarEstoque();
-  }, [carregarEstoque]);
+  }, [carregarEstoque, refreshKey]);
 
-  const rows = useMemo(() => {
-    const term = query.trim().toLocaleLowerCase("pt-BR");
-    const filtered = stockItems.filter((item) => {
-      if (!term) return true;
-      return [item.descricao, item.codigo, item.marca].some((value) => value.toLocaleLowerCase("pt-BR").includes(term));
-    });
+  function alterarOrdenacao(value: string) {
+    setOrder(value);
+    setPage(1);
+  }
 
-    return [...filtered].sort((a, b) => {
-      const totalA = a.padua + a.macae + a.campos;
-      const totalB = b.padua + b.macae + b.campos;
-      if (order === "total-asc") return totalA - totalB;
-      if (order === "min-asc") return Math.min(a.padua, a.macae, a.campos) - Math.min(b.padua, b.macae, b.campos);
-      if (order === "max-desc") return Math.max(b.padua, b.macae, b.campos) - Math.max(a.padua, a.macae, a.campos);
-      if (order === "nome") return a.descricao.localeCompare(b.descricao, "pt-BR");
-      return totalB - totalA;
-    });
-  }, [query, order, stockItems]);
+  function alterarTamanhoPagina(value: number) {
+    setPageSize(value);
+    setPage(1);
+  }
 
-  const total = stockItems.reduce((acc, item) => acc + item.padua + item.macae + item.campos, 0);
-  const semEstoque = stockItems.filter((item) => [item.padua, item.macae, item.campos].some((qtd) => qtd === 0)).length;
+  const inicioExibicao = pagination.filteredCount === 0 ? 0 : (pagination.page - 1) * pagination.pageSize + 1;
+  const fimExibicao = Math.min(pagination.page * pagination.pageSize, pagination.filteredCount);
 
   return (
     <>
@@ -143,16 +112,16 @@ export default function EstoquePage() {
         title="Controle de estoque"
         description="Consulte e compare o estoque das lojas de Pádua, Macaé e Campos."
         action={
-          <button className="button secondary" type="button" onClick={carregarEstoque} disabled={loading}>
+          <button className="button secondary" type="button" onClick={() => setRefreshKey((value) => value + 1)} disabled={loading}>
             <RefreshCw size={16} /> {loading ? "Atualizando..." : "Atualizar"}
           </button>
         }
       />
 
       <section className="stats-grid four">
-        <StatCard label="Produtos" value={formatNumber(stockItems.length)} helper="Dados reais do estoque" icon={Boxes} />
-        <StatCard label="Estoque total" value={formatNumber(total)} helper="Somatório das três lojas" icon={Boxes} />
-        <StatCard label="Sem estoque em uma loja" value={formatNumber(semEstoque)} helper="Ponto de atenção" icon={PackageMinus} />
+        <StatCard label="Produtos" value={formatNumber(stats.totalProdutos)} helper="Dados reais do estoque" icon={Boxes} />
+        <StatCard label="Estoque total" value={formatNumber(stats.estoqueTotal)} helper="Somatório das três lojas" icon={Boxes} />
+        <StatCard label="Sem estoque em uma loja" value={formatNumber(stats.semEstoque)} helper="Ponto de atenção" icon={PackageMinus} />
         <StatCard label="Lojas" value="3" helper="Pádua, Macaé e Campos" icon={Boxes} />
       </section>
 
@@ -163,12 +132,18 @@ export default function EstoquePage() {
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por produto, código interno ou marca..." />
           </label>
 
-          <select value={order} onChange={(event) => setOrder(event.target.value)} className="select-control" aria-label="Ordenação">
+          <select value={order} onChange={(event) => alterarOrdenacao(event.target.value)} className="select-control" aria-label="Ordenação">
             <option value="total-desc">Maior estoque total</option>
             <option value="total-asc">Menor estoque total</option>
             <option value="min-asc">Menor estoque em uma loja</option>
             <option value="max-desc">Maior estoque em uma loja</option>
             <option value="nome">Nome do produto</option>
+          </select>
+
+          <select value={pageSize} onChange={(event) => alterarTamanhoPagina(Number(event.target.value))} className="select-control" aria-label="Itens por página">
+            <option value={50}>50 por página</option>
+            <option value={100}>100 por página</option>
+            <option value={200}>200 por página</option>
           </select>
         </div>
 
@@ -189,7 +164,7 @@ export default function EstoquePage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((item) => {
+              {stockItems.map((item) => {
                 const totalItem = item.padua + item.macae + item.campos;
                 return (
                   <tr key={item.id}>
@@ -204,16 +179,43 @@ export default function EstoquePage() {
                   </tr>
                 );
               })}
-              {!loading && !error && rows.length === 0 && (
+              {!loading && !error && stockItems.length === 0 && (
                 <tr><td colSpan={8}>Nenhum produto encontrado.</td></tr>
               )}
             </tbody>
           </table>
         </div>
 
-        <div className="table-footer">
-          <span>{loading ? "Carregando estoque..." : `${rows.length} produto(s) exibido(s)`}</span>
-          <span>Fonte: estoque real integrado pelo backend</span>
+        <div className="table-footer" style={{ gap: 12, flexWrap: "wrap" }}>
+          <span>
+            {loading
+              ? "Carregando estoque..."
+              : `${inicioExibicao}-${fimExibicao} de ${pagination.filteredCount} produto(s)`}
+          </span>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              className="button secondary"
+              type="button"
+              onClick={() => setPage((value) => Math.max(1, value - 1))}
+              disabled={loading || pagination.page <= 1}
+              aria-label="Página anterior"
+            >
+              <ChevronLeft size={16} /> Anterior
+            </button>
+
+            <span>Página {pagination.page} de {pagination.totalPages}</span>
+
+            <button
+              className="button secondary"
+              type="button"
+              onClick={() => setPage((value) => Math.min(pagination.totalPages, value + 1))}
+              disabled={loading || pagination.page >= pagination.totalPages}
+              aria-label="Próxima página"
+            >
+              Próxima <ChevronRight size={16} />
+            </button>
+          </div>
         </div>
       </section>
     </>
