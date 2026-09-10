@@ -46,7 +46,7 @@ function montarOrBusca(query: string) {
 }
 
 function montarOrdenacao(order: string) {
-  if (order === "zero-recent") return "ultima_alteracao.desc.nullslast,sku.asc";
+  if (order === "zero-recent") return "zerou_em.desc.nullslast,sku.asc";
 
   const principal = (() => {
     if (order === "total-asc") return "estoque_total.asc";
@@ -86,14 +86,11 @@ export async function POST(request: Request) {
       ? body.fornecedores.map((nome: unknown) => String(nome || "").trim()).filter(Boolean)
       : [];
 
+    const sourceView = zeroRecent ? "INTERCEL_ESTOQUE_ZERADOS_RECENTES" : "INTERCEL_ESTOQUE_CONSOLIDADO";
     const pageParams = new URLSearchParams({
       select: "sku,descricao,marca,valor_venda,fornecedores,padua,itaperuna,campos",
       order: montarOrdenacao(order)
     });
-
-    if (zeroRecent) {
-      pageParams.set("sem_estoque", "eq.true");
-    }
 
     const filtroBusca = query ? montarOrBusca(query) : "";
     const filtroFornecedores = montarOrFornecedores(fornecedoresSelecionados);
@@ -106,7 +103,9 @@ export async function POST(request: Request) {
       pageParams.set("or", `(${filtroFornecedores})`);
     }
 
-    const from = (page - 1) * pageSize;
+    const maxRecentPages = Math.max(1, Math.ceil(RECENT_ZERO_LIMIT / pageSize));
+    const queryPage = zeroRecent ? Math.min(page, maxRecentPages) : page;
+    const from = (queryPage - 1) * pageSize;
     const maxTo = zeroRecent ? RECENT_ZERO_LIMIT - 1 : Number.MAX_SAFE_INTEGER;
     const to = Math.min(from + pageSize - 1, maxTo);
 
@@ -114,7 +113,7 @@ export async function POST(request: Request) {
     const fornecedoresParams = new URLSearchParams({ select: "fornecedor" });
 
     const [pageResponse, statsResponse, fornecedoresResponse] = await Promise.all([
-      supabaseGet("INTERCEL_ESTOQUE_CONSOLIDADO", pageParams, {
+      supabaseGet(sourceView, pageParams, {
         Range: `${from}-${to}`,
         Prefer: "count=exact"
       }),
@@ -140,7 +139,7 @@ export async function POST(request: Request) {
     const rawFilteredCount = totalPart && totalPart !== "*" ? Number(totalPart) : 0;
     const filteredCount = zeroRecent ? Math.min(rawFilteredCount, RECENT_ZERO_LIMIT) : rawFilteredCount;
     const totalPages = Math.max(1, Math.ceil(filteredCount / pageSize));
-    const safePage = Math.min(page, totalPages);
+    const safePage = Math.min(queryPage, totalPages);
 
     const data = (Array.isArray(pagePayload) ? pagePayload : []).map((row: EstoqueViewRow) => ({
       id: row.sku,
