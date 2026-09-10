@@ -11,9 +11,9 @@ type EstoqueItem = {
   codigo: string;
   descricao: string;
   marca: string;
-  padua: number;
-  macae: number;
-  campos: number;
+  padua: number | null;
+  macae: number | null;
+  campos: number | null;
   valorVarejo: number;
 };
 
@@ -29,6 +29,10 @@ type Stats = {
   estoqueTotal: number;
   semEstoque: number;
 };
+
+function exibirEstoque(valor: number | null) {
+  return valor === null ? "N/A" : valor;
+}
 
 export default function EstoquePage() {
   const [query, setQuery] = useState("");
@@ -165,15 +169,15 @@ export default function EstoquePage() {
             </thead>
             <tbody>
               {stockItems.map((item) => {
-                const totalItem = item.padua + item.macae + item.campos;
+                const totalItem = (item.padua ?? 0) + (item.macae ?? 0) + (item.campos ?? 0);
                 return (
                   <tr key={item.id}>
                     <td className="product-cell"><strong>{item.descricao}</strong></td>
                     <td><span className="code-chip">{item.codigo}</span></td>
                     <td>{item.marca || "—"}</td>
-                    <td className={item.padua === 0 ? "zero-stock" : ""}>{item.padua}</td>
-                    <td className={item.macae === 0 ? "zero-stock" : ""}>{item.macae}</td>
-                    <td className={item.campos === 0 ? "zero-stock" : ""}>{item.campos}</td>
+                    <td className={item.padua === 0 ? "zero-stock" : ""}>{exibirEstoque(item.padua)}</td>
+                    <td className={item.macae === 0 ? "zero-stock" : ""}>{exibirEstoque(item.macae)}</td>
+                    <td className={item.campos === 0 ? "zero-stock" : ""}>{exibirEstoque(item.campos)}</td>
                     <td><strong>{totalItem}</strong></td>
                     <td>{formatCurrency(item.valorVarejo)}</td>
                   </tr>
