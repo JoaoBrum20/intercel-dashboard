@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Boxes, ChevronLeft, ChevronRight, PackageMinus, RefreshCw, Search } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Boxes, ChevronDown, ChevronLeft, ChevronRight, PackageMinus, RefreshCw, Search } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
 import { formatCurrency, formatNumber } from "@/lib/format";
@@ -37,27 +37,23 @@ function exibirEstoque(valor?: number | null) {
 
 export default function EstoquePage() {
   const [query, setQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [order, setOrder] = useState("total-desc");
-  const [fornecedor, setFornecedor] = useState("");
+  const [fornecedoresSelecionados, setFornecedoresSelecionados] = useState<string[]>([]);
+  const [pageSize, setPageSize] = useState(100);
+
+  const [appliedQuery, setAppliedQuery] = useState("");
+  const [appliedOrder, setAppliedOrder] = useState("total-desc");
+  const [appliedFornecedores, setAppliedFornecedores] = useState<string[]>([]);
+  const [appliedPageSize, setAppliedPageSize] = useState(100);
+
   const [fornecedores, setFornecedores] = useState<string[]>([]);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(100);
   const [stockItems, setStockItems] = useState<EstoqueItem[]>([]);
   const [pagination, setPagination] = useState<Pagination>({ page: 1, pageSize: 100, filteredCount: 0, totalPages: 1 });
   const [stats, setStats] = useState<Stats>({ totalProdutos: 0, estoqueTotal: 0, semEstoque: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setDebouncedQuery(query);
-      setPage(1);
-    }, 250);
-
-    return () => window.clearTimeout(timer);
-  }, [query]);
 
   const carregarEstoque = useCallback(async () => {
     setLoading(true);
@@ -69,10 +65,10 @@ export default function EstoquePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           page,
-          pageSize,
-          query: debouncedQuery,
-          order,
-          fornecedor
+          pageSize: appliedPageSize,
+          query: appliedQuery,
+          order: appliedOrder,
+          fornecedores: appliedFornecedores
         }),
         cache: "no-store"
       });
@@ -84,7 +80,7 @@ export default function EstoquePage() {
 
       setStockItems(Array.isArray(payload?.data) ? payload.data : []);
       setFornecedores(Array.isArray(payload?.fornecedores) ? payload.fornecedores : []);
-      setPagination(payload?.pagination || { page: 1, pageSize, filteredCount: 0, totalPages: 1 });
+      setPagination(payload?.pagination || { page: 1, pageSize: appliedPageSize, filteredCount: 0, totalPages: 1 });
       setStats(payload?.stats || { totalProdutos: 0, estoqueTotal: 0, semEstoque: 0 });
 
       if (payload?.pagination?.page && payload.pagination.page !== page) {
@@ -96,26 +92,37 @@ export default function EstoquePage() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedQuery, fornecedor, order, page, pageSize]);
+  }, [appliedFornecedores, appliedOrder, appliedPageSize, appliedQuery, page]);
 
   useEffect(() => {
     carregarEstoque();
   }, [carregarEstoque, refreshKey]);
 
-  function alterarOrdenacao(value: string) {
-    setOrder(value);
+  const filtrosAlterados = useMemo(() => {
+    const atual = [...fornecedoresSelecionados].sort().join("|");
+    const aplicado = [...appliedFornecedores].sort().join("|");
+    return query !== appliedQuery || order !== appliedOrder || pageSize !== appliedPageSize || atual !== aplicado;
+  }, [appliedFornecedores, appliedOrder, appliedPageSize, appliedQuery, fornecedoresSelecionados, order, pageSize, query]);
+
+  function alternarFornecedor(nome: string) {
+    setFornecedoresSelecionados((atuais) =>
+      atuais.includes(nome) ? atuais.filter((item) => item !== nome) : [...atuais, nome]
+    );
+  }
+
+  function aplicarFiltros() {
+    setAppliedQuery(query.trim());
+    setAppliedOrder(order);
+    setAppliedFornecedores(fornecedoresSelecionados);
+    setAppliedPageSize(pageSize);
     setPage(1);
   }
 
-  function alterarFornecedor(value: string) {
-    setFornecedor(value);
-    setPage(1);
-  }
-
-  function alterarTamanhoPagina(value: number) {
-    setPageSize(value);
-    setPage(1);
-  }
+  const resumoFornecedores = fornecedoresSelecionados.length === 0
+    ? "Todos os fornecedores"
+    : fornecedoresSelecionados.length === 1
+      ? fornecedoresSelecionados[0]
+      : `${fornecedoresSelecionados.length} fornecedores`;
 
   const inicioExibicao = pagination.filteredCount === 0 ? 0 : (pagination.page - 1) * pagination.pageSize + 1;
   const fimExibicao = Math.min(pagination.page * pagination.pageSize, pagination.filteredCount);
@@ -140,26 +147,47 @@ export default function EstoquePage() {
       </section>
 
       <section className="panel">
-        <div className="toolbar">
+        <div className="toolbar estoque-toolbar">
           <label className="search-box">
             <Search size={18} />
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por produto, código interno, marca ou fornecedor..." />
           </label>
 
-          <select value={fornecedor} onChange={(event) => alterarFornecedor(event.target.value)} className="select-control" aria-label="Filtrar por fornecedor">
-            <option value="">Todos os fornecedores</option>
-            {fornecedores.map((nome) => (
-              <option key={nome} value={nome}>{nome}</option>
-            ))}
-          </select>
+          <details className="supplier-filter">
+            <summary>
+              <span>{resumoFornecedores}</span>
+              <ChevronDown size={16} />
+            </summary>
+            <div className="supplier-menu">
+              <button type="button" className="supplier-clear" onClick={() => setFornecedoresSelecionados([])}>
+                Limpar seleção
+              </button>
+              <div className="supplier-options">
+                {fornecedores.map((nome) => (
+                  <label key={nome} className="supplier-option">
+                    <input
+                      type="checkbox"
+                      checked={fornecedoresSelecionados.includes(nome)}
+                      onChange={() => alternarFornecedor(nome)}
+                    />
+                    <span>{nome}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </details>
 
-          <select value={order} onChange={(event) => alterarOrdenacao(event.target.value)} className="select-control" aria-label="Ordenar estoque">
+          <select value={order} onChange={(event) => setOrder(event.target.value)} className="select-control" aria-label="Ordenar estoque">
             <option value="total-desc">Maior estoque total</option>
             <option value="total-asc">Menor estoque total</option>
             <option value="min-asc">Menor estoque em uma loja</option>
             <option value="max-desc">Maior estoque em uma loja</option>
             <option value="nome">Nome do produto</option>
           </select>
+
+          <button className="button apply-button" type="button" onClick={aplicarFiltros} disabled={loading || !filtrosAlterados}>
+            Ir
+          </button>
         </div>
 
         {error && <div style={{ padding: "12px 16px" }}>Erro: {error}</div>}
@@ -209,7 +237,7 @@ export default function EstoquePage() {
                 : `${inicioExibicao}-${fimExibicao} de ${pagination.filteredCount} produto(s)`}
             </span>
 
-            <select value={pageSize} onChange={(event) => alterarTamanhoPagina(Number(event.target.value))} className="select-control page-size-control" aria-label="Itens por página">
+            <select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))} className="select-control page-size-control" aria-label="Itens por página">
               <option value={50}>50 por página</option>
               <option value={100}>100 por página</option>
               <option value={200}>200 por página</option>
