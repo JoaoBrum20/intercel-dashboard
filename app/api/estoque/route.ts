@@ -92,7 +92,7 @@ export async function POST(request: Request) {
     });
 
     if (zeroRecent) {
-      pageParams.set("estoque_total", "eq.0");
+      pageParams.set("sem_estoque", "eq.true");
     }
 
     const filtroBusca = query ? montarOrBusca(query) : "";
