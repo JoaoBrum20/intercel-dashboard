@@ -12,7 +12,7 @@ type EstoqueItem = {
   descricao: string;
   marca: string;
   padua?: number | null;
-  macae?: number | null;
+  itaperuna?: number | null;
   campos?: number | null;
   valorVarejo: number;
 };
@@ -114,7 +114,7 @@ export default function EstoquePage() {
     <>
       <PageHeader
         title="Controle de estoque"
-        description="Consulte e compare o estoque das lojas de Pádua, Macaé e Campos."
+        description="Consulte e compare o estoque das lojas de Pádua, Itaperuna e Campos."
         action={
           <button className="button secondary" type="button" onClick={() => setRefreshKey((value) => value + 1)} disabled={loading}>
             <RefreshCw size={16} /> {loading ? "Atualizando..." : "Atualizar"}
@@ -126,7 +126,7 @@ export default function EstoquePage() {
         <StatCard label="Produtos" value={formatNumber(stats.totalProdutos)} helper="Dados reais do estoque" icon={Boxes} />
         <StatCard label="Estoque total" value={formatNumber(stats.estoqueTotal)} helper="Somatório das três lojas" icon={Boxes} />
         <StatCard label="Sem estoque em uma loja" value={formatNumber(stats.semEstoque)} helper="Ponto de atenção" icon={PackageMinus} />
-        <StatCard label="Lojas" value="3" helper="Pádua, Macaé e Campos" icon={Boxes} />
+        <StatCard label="Lojas" value="3" helper="Pádua, Itaperuna e Campos" icon={Boxes} />
       </section>
 
       <section className="panel">
@@ -161,7 +161,7 @@ export default function EstoquePage() {
                 <th>Código interno</th>
                 <th>Marca</th>
                 <th>Pádua</th>
-                <th>Macaé</th>
+                <th>Itaperuna</th>
                 <th>Campos</th>
                 <th>Total</th>
                 <th>Valor varejo</th>
@@ -169,14 +169,14 @@ export default function EstoquePage() {
             </thead>
             <tbody>
               {stockItems.map((item) => {
-                const totalItem = (item.padua ?? 0) + (item.macae ?? 0) + (item.campos ?? 0);
+                const totalItem = (item.padua ?? 0) + (item.itaperuna ?? 0) + (item.campos ?? 0);
                 return (
                   <tr key={item.id}>
                     <td className="product-cell"><strong>{item.descricao}</strong></td>
                     <td><span className="code-chip">{item.codigo}</span></td>
                     <td>{item.marca || "—"}</td>
                     <td className={item.padua === 0 ? "zero-stock" : ""}>{exibirEstoque(item.padua)}</td>
-                    <td className={item.macae === 0 ? "zero-stock" : ""}>{exibirEstoque(item.macae)}</td>
+                    <td className={item.itaperuna === 0 ? "zero-stock" : ""}>{exibirEstoque(item.itaperuna)}</td>
                     <td className={item.campos === 0 ? "zero-stock" : ""}>{exibirEstoque(item.campos)}</td>
                     <td><strong>{totalItem}</strong></td>
                     <td>{formatCurrency(item.valorVarejo)}</td>
