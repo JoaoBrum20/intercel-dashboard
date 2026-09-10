@@ -2,33 +2,17 @@ import { NextResponse } from "next/server";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://otjwjkrbbzmrsgvhcpkj.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || "sb_publishable_U1aMNi9x_BmiAc8bbvBWSw_xiMcb_OW";
-const SUPABASE_PAGE_SIZE = 1000;
 const PAGE_SIZES = new Set([50, 100, 200]);
-const DIAS_MOVIMENTACAO_RECENTE = 90;
 
-type EstoqueRegistro = {
-  id?: number | string;
-  sku?: string | null;
+type EstoqueViewRow = {
+  sku: string;
   descricao?: string | null;
-  loja?: string | null;
-  estoque_atual?: number | string | null;
-  valor_venda?: number | string | null;
   marca?: string | null;
-  ultima_alteracao?: string | null;
+  valor_venda?: number | string | null;
   fornecedores?: string | null;
-};
-
-type EstoqueItem = {
-  id: string;
-  codigo: string;
-  descricao: string;
-  marca: string;
-  padua: number | null;
-  itaperuna: number | null;
-  campos: number | null;
-  valorVarejo: number;
-  ultimaAlteracao: string | null;
-  fornecedores: string[];
+  padua?: number | string | null;
+  itaperuna?: number | string | null;
+  campos?: number | string | null;
 };
 
 function normalizarTexto(valor?: string | null) {
@@ -37,10 +21,6 @@ function normalizarTexto(valor?: string | null) {
     .replace(/[\u0300-\u036f]/g, "")
     .trim()
     .toLowerCase();
-}
-
-function normalizarLoja(loja?: string | null) {
-  return normalizarTexto(loja);
 }
 
 function separarFornecedores(valor?: string | null) {
@@ -52,121 +32,37 @@ function separarFornecedores(valor?: string | null) {
     .filter(Boolean);
 }
 
-function adicionarFornecedores(atual: string[], novos?: string | null) {
-  const mapa = new Map(atual.map((fornecedor) => [normalizarTexto(fornecedor), fornecedor]));
-
-  for (const fornecedor of separarFornecedores(novos)) {
-    const chave = normalizarTexto(fornecedor);
-    if (chave && !mapa.has(chave)) mapa.set(chave, fornecedor);
-  }
-
-  return Array.from(mapa.values()).sort((a, b) => a.localeCompare(b, "pt-BR"));
+function safeIlikeValue(value: string) {
+  return value.replace(/[,*()]/g, " ").trim();
 }
 
-function timestampData(valor?: string | null) {
-  if (!valor) return null;
-
-  const normalizada = valor.includes("T") ? valor : valor.replace(" ", "T");
-  const timestamp = Date.parse(normalizada);
-  return Number.isNaN(timestamp) ? null : timestamp;
+function montarFiltroOr(termos: string[]) {
+  const filtros = termos.filter(Boolean).map((termo) => `fornecedores.ilike.*${safeIlikeValue(termo)}*`);
+  return filtros.length ? `(${filtros.join(",")})` : "";
 }
 
-function dataMaisRecente(atual: string | null, nova?: string | null) {
-  if (!nova) return atual;
-  if (!atual) return nova;
+function montarOrdenacao(order: string) {
+  const principal = (() => {
+    if (order === "total-asc") return "estoque_total.asc";
+    if (order === "min-asc") return "menor_estoque.asc";
+    if (order === "max-desc") return "maior_estoque.desc";
+    if (order === "nome") return "descricao.asc";
+    return "estoque_total.desc";
+  })();
 
-  const atualTs = timestampData(atual);
-  const novaTs = timestampData(nova);
-
-  if (novaTs === null) return atual;
-  if (atualTs === null) return nova;
-  return novaTs > atualTs ? nova : atual;
+  return `movimentacao_recente.desc,${principal},sku.asc`;
 }
 
-function teveMovimentacaoRecente(item: EstoqueItem) {
-  const timestamp = timestampData(item.ultimaAlteracao);
-  if (timestamp === null) return false;
-
-  const limite = Date.now() - DIAS_MOVIMENTACAO_RECENTE * 24 * 60 * 60 * 1000;
-  return timestamp >= limite;
-}
-
-function agruparPorSku(registros: EstoqueRegistro[]): EstoqueItem[] {
-  const mapa = new Map<string, EstoqueItem>();
-
-  for (const registro of registros) {
-    const sku = String(registro.sku || "").trim();
-    if (!sku) continue;
-
-    const atual = mapa.get(sku) || {
-      id: sku,
-      codigo: sku,
-      descricao: registro.descricao || "Produto sem descrição",
-      marca: registro.marca || "",
-      padua: null,
-      itaperuna: null,
-      campos: null,
-      valorVarejo: Number(registro.valor_venda || 0),
-      ultimaAlteracao: null,
-      fornecedores: []
-    };
-
-    if (!atual.descricao && registro.descricao) atual.descricao = registro.descricao;
-    if (!atual.marca && registro.marca) atual.marca = registro.marca;
-    if (!atual.valorVarejo && registro.valor_venda) atual.valorVarejo = Number(registro.valor_venda || 0);
-    atual.ultimaAlteracao = dataMaisRecente(atual.ultimaAlteracao, registro.ultima_alteracao);
-    atual.fornecedores = adicionarFornecedores(atual.fornecedores, registro.fornecedores);
-
-    const quantidade = Number(registro.estoque_atual || 0);
-    const loja = normalizarLoja(registro.loja);
-
-    if (loja === "padua") atual.padua = quantidade;
-    if (loja === "itaperuna") atual.itaperuna = quantidade;
-    if (loja === "campos") atual.campos = quantidade;
-
-    mapa.set(sku, atual);
-  }
-
-  return Array.from(mapa.values());
-}
-
-function valoresCadastrados(item: EstoqueItem) {
-  return [item.padua, item.itaperuna, item.campos].filter((valor): valor is number => valor !== null);
-}
-
-function totalItem(item: EstoqueItem) {
-  return (item.padua ?? 0) + (item.itaperuna ?? 0) + (item.campos ?? 0);
-}
-
-function compararOrdenacao(a: EstoqueItem, b: EstoqueItem, order: string) {
-  const totalA = totalItem(a);
-  const totalB = totalItem(b);
-  const cadastradosA = valoresCadastrados(a);
-  const cadastradosB = valoresCadastrados(b);
-
-  if (order === "total-asc") return totalA - totalB;
-  if (order === "min-asc") {
-    const menorA = cadastradosA.length ? Math.min(...cadastradosA) : Number.POSITIVE_INFINITY;
-    const menorB = cadastradosB.length ? Math.min(...cadastradosB) : Number.POSITIVE_INFINITY;
-    return menorA - menorB;
-  }
-  if (order === "max-desc") {
-    const maiorA = cadastradosA.length ? Math.max(...cadastradosA) : Number.NEGATIVE_INFINITY;
-    const maiorB = cadastradosB.length ? Math.max(...cadastradosB) : Number.NEGATIVE_INFINITY;
-    return maiorB - maiorA;
-  }
-  if (order === "nome") return a.descricao.localeCompare(b.descricao, "pt-BR");
-  return totalB - totalA;
-}
-
-function ordenarItens(itens: EstoqueItem[], order: string) {
-  return [...itens].sort((a, b) => {
-    const recenteA = teveMovimentacaoRecente(a);
-    const recenteB = teveMovimentacaoRecente(b);
-
-    if (recenteA !== recenteB) return recenteA ? -1 : 1;
-
-    return compararOrdenacao(a, b, order);
+async function supabaseGet(path: string, params: URLSearchParams, extraHeaders: Record<string, string> = {}) {
+  return fetch(`${SUPABASE_URL}/rest/v1/${path}?${params.toString()}`, {
+    method: "GET",
+    headers: {
+      apikey: SUPABASE_PUBLISHABLE_KEY,
+      Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+      Accept: "application/json",
+      ...extraHeaders
+    },
+    cache: "no-store"
   });
 }
 
@@ -177,86 +73,80 @@ export async function POST(request: Request) {
     const requestedPageSize = Number(body?.pageSize || 100);
     const page = Number.isFinite(requestedPage) && requestedPage > 0 ? Math.floor(requestedPage) : 1;
     const pageSize = PAGE_SIZES.has(requestedPageSize) ? requestedPageSize : 100;
-    const query = String(body?.query || "").trim().toLocaleLowerCase("pt-BR");
+    const query = safeIlikeValue(String(body?.query || "").trim());
     const order = String(body?.order || "total-desc");
     const fornecedoresSelecionados = Array.isArray(body?.fornecedores)
-      ? body.fornecedores.map((nome: unknown) => normalizarTexto(String(nome || ""))).filter(Boolean)
+      ? body.fornecedores.map((nome: unknown) => String(nome || "").trim()).filter(Boolean)
       : [];
 
-    const params = new URLSearchParams({
-      select: "id,sku,descricao,loja,estoque_atual,valor_venda,marca,ultima_alteracao,fornecedores",
-      order: "sku.asc,id.asc"
+    const pageParams = new URLSearchParams({
+      select: "sku,descricao,marca,valor_venda,fornecedores,padua,itaperuna,campos",
+      order: montarOrdenacao(order)
     });
 
-    const todos: EstoqueRegistro[] = [];
-    let inicio = 0;
-
-    while (true) {
-      const fim = inicio + SUPABASE_PAGE_SIZE - 1;
-
-      const response = await fetch(`${SUPABASE_URL}/rest/v1/INTERCEL_ESTOQUE?${params.toString()}`, {
-        method: "GET",
-        headers: {
-          apikey: SUPABASE_PUBLISHABLE_KEY,
-          Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
-          Accept: "application/json",
-          Range: `${inicio}-${fim}`
-        },
-        cache: "no-store"
-      });
-
-      const payload = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        return NextResponse.json(
-          { success: false, error: "Falha ao consultar o estoque no Supabase.", details: payload },
-          { status: response.status }
-        );
-      }
-
-      const pagina = Array.isArray(payload) ? (payload as EstoqueRegistro[]) : [];
-      todos.push(...pagina);
-
-      if (pagina.length < SUPABASE_PAGE_SIZE) break;
-      inicio += SUPABASE_PAGE_SIZE;
-    }
-
-    let itens = agruparPorSku(todos);
-
-    const fornecedores = Array.from(
-      new Map(
-        itens
-          .flatMap((item) => item.fornecedores)
-          .map((nome) => [normalizarTexto(nome), nome])
-      ).values()
-    ).sort((a, b) => a.localeCompare(b, "pt-BR"));
-
-    const totalProdutos = itens.length;
-    const estoqueTotal = itens.reduce((acc, item) => acc + totalItem(item), 0);
-    const semEstoque = itens.filter((item) => valoresCadastrados(item).some((qtd) => qtd === 0)).length;
-
     if (query) {
-      itens = itens.filter((item) =>
-        [item.descricao, item.codigo, item.marca, ...item.fornecedores].some((value) =>
-          value.toLocaleLowerCase("pt-BR").includes(query)
-        )
+      pageParams.set(
+        "or",
+        `(descricao.ilike.*${query}*,sku.ilike.*${query}*,marca.ilike.*${query}*,fornecedores.ilike.*${query}*)`
       );
     }
 
     if (fornecedoresSelecionados.length) {
-      itens = itens.filter((item) => {
-        const fornecedoresItem = item.fornecedores.map((nome) => normalizarTexto(nome));
-        return fornecedoresSelecionados.some((selecionado: string) => fornecedoresItem.includes(selecionado));
-      });
+      pageParams.set("and", `(${montarFiltroOr(fornecedoresSelecionados)})`);
     }
 
-    itens = ordenarItens(itens, order);
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
 
-    const filteredCount = itens.length;
+    const statsParams = new URLSearchParams({ select: "total_produtos,estoque_total,sem_estoque" });
+    const fornecedoresParams = new URLSearchParams({ select: "fornecedor", order: "fornecedor.asc" });
+
+    const [pageResponse, statsResponse, fornecedoresResponse] = await Promise.all([
+      supabaseGet("INTERCEL_ESTOQUE_CONSOLIDADO", pageParams, {
+        Range: `${from}-${to}`,
+        Prefer: "count=exact"
+      }),
+      supabaseGet("INTERCEL_ESTOQUE_STATS", statsParams),
+      supabaseGet("INTERCEL_FORNECEDORES", fornecedoresParams)
+    ]);
+
+    const [pagePayload, statsPayload, fornecedoresPayload] = await Promise.all([
+      pageResponse.json().catch(() => null),
+      statsResponse.json().catch(() => null),
+      fornecedoresResponse.json().catch(() => null)
+    ]);
+
+    if (!pageResponse.ok) {
+      return NextResponse.json(
+        { success: false, error: "Falha ao consultar o estoque no Supabase.", details: pagePayload },
+        { status: pageResponse.status }
+      );
+    }
+
+    const contentRange = pageResponse.headers.get("content-range") || "";
+    const totalPart = contentRange.split("/")[1];
+    const filteredCount = totalPart && totalPart !== "*" ? Number(totalPart) : 0;
     const totalPages = Math.max(1, Math.ceil(filteredCount / pageSize));
     const safePage = Math.min(page, totalPages);
-    const from = (safePage - 1) * pageSize;
-    const data = itens.slice(from, from + pageSize);
+
+    const data = (Array.isArray(pagePayload) ? pagePayload : []).map((row: EstoqueViewRow) => ({
+      id: row.sku,
+      codigo: row.sku,
+      descricao: row.descricao || "Produto sem descrição",
+      marca: row.marca || "",
+      padua: row.padua == null ? null : Number(row.padua),
+      itaperuna: row.itaperuna == null ? null : Number(row.itaperuna),
+      campos: row.campos == null ? null : Number(row.campos),
+      valorVarejo: Number(row.valor_venda || 0),
+      fornecedores: separarFornecedores(row.fornecedores)
+    }));
+
+    const statsRow = Array.isArray(statsPayload) && statsPayload[0] ? statsPayload[0] : {};
+    const fornecedores = Array.isArray(fornecedoresPayload)
+      ? fornecedoresPayload
+          .map((item: { fornecedor?: string | null }) => item.fornecedor || "")
+          .filter(Boolean)
+      : [];
 
     return NextResponse.json({
       success: true,
@@ -269,9 +159,9 @@ export async function POST(request: Request) {
         totalPages
       },
       stats: {
-        totalProdutos,
-        estoqueTotal,
-        semEstoque
+        totalProdutos: Number(statsRow.total_produtos || 0),
+        estoqueTotal: Number(statsRow.estoque_total || 0),
+        semEstoque: Number(statsRow.sem_estoque || 0)
       }
     });
   } catch (error) {
