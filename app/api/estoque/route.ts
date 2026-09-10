@@ -20,9 +20,9 @@ type EstoqueItem = {
   codigo: string;
   descricao: string;
   marca: string;
-  padua: number;
-  macae: number;
-  campos: number;
+  padua: number | null;
+  macae: number | null;
+  campos: number | null;
   valorVarejo: number;
 };
 
@@ -46,9 +46,9 @@ function agruparPorSku(registros: EstoqueRegistro[]): EstoqueItem[] {
       codigo: sku,
       descricao: registro.descricao || "Produto sem descrição",
       marca: registro.marca || "",
-      padua: 0,
-      macae: 0,
-      campos: 0,
+      padua: null,
+      macae: null,
+      campos: null,
       valorVarejo: Number(registro.valor_venda || 0)
     };
 
@@ -69,14 +69,32 @@ function agruparPorSku(registros: EstoqueRegistro[]): EstoqueItem[] {
   return Array.from(mapa.values());
 }
 
+function valoresCadastrados(item: EstoqueItem) {
+  return [item.padua, item.macae, item.campos].filter((valor): valor is number => valor !== null);
+}
+
+function totalItem(item: EstoqueItem) {
+  return (item.padua ?? 0) + (item.macae ?? 0) + (item.campos ?? 0);
+}
+
 function ordenarItens(itens: EstoqueItem[], order: string) {
   return [...itens].sort((a, b) => {
-    const totalA = a.padua + a.macae + a.campos;
-    const totalB = b.padua + b.macae + b.campos;
+    const totalA = totalItem(a);
+    const totalB = totalItem(b);
+    const cadastradosA = valoresCadastrados(a);
+    const cadastradosB = valoresCadastrados(b);
 
     if (order === "total-asc") return totalA - totalB;
-    if (order === "min-asc") return Math.min(a.padua, a.macae, a.campos) - Math.min(b.padua, b.macae, b.campos);
-    if (order === "max-desc") return Math.max(b.padua, b.macae, b.campos) - Math.max(a.padua, a.macae, a.campos);
+    if (order === "min-asc") {
+      const menorA = cadastradosA.length ? Math.min(...cadastradosA) : Number.POSITIVE_INFINITY;
+      const menorB = cadastradosB.length ? Math.min(...cadastradosB) : Number.POSITIVE_INFINITY;
+      return menorA - menorB;
+    }
+    if (order === "max-desc") {
+      const maiorA = cadastradosA.length ? Math.max(...cadastradosA) : Number.NEGATIVE_INFINITY;
+      const maiorB = cadastradosB.length ? Math.max(...cadastradosB) : Number.NEGATIVE_INFINITY;
+      return maiorB - maiorA;
+    }
     if (order === "nome") return a.descricao.localeCompare(b.descricao, "pt-BR");
     return totalB - totalA;
   });
@@ -133,8 +151,8 @@ export async function POST(request: Request) {
     let itens = agruparPorSku(todos);
 
     const totalProdutos = itens.length;
-    const estoqueTotal = itens.reduce((acc, item) => acc + item.padua + item.macae + item.campos, 0);
-    const semEstoque = itens.filter((item) => [item.padua, item.macae, item.campos].some((qtd) => qtd === 0)).length;
+    const estoqueTotal = itens.reduce((acc, item) => acc + totalItem(item), 0);
+    const semEstoque = itens.filter((item) => valoresCadastrados(item).some((qtd) => qtd === 0)).length;
 
     if (query) {
       itens = itens.filter((item) =>
