@@ -102,7 +102,7 @@ export async function POST(request: Request) {
     const to = from + pageSize - 1;
 
     const statsParams = new URLSearchParams({ select: "total_produtos,estoque_total,sem_estoque" });
-    const fornecedoresParams = new URLSearchParams({ select: "fornecedor", order: "fornecedor.asc" });
+    const fornecedoresParams = new URLSearchParams({ select: "fornecedor" });
 
     const [pageResponse, statsResponse, fornecedoresResponse] = await Promise.all([
       supabaseGet("INTERCEL_ESTOQUE_CONSOLIDADO", pageParams, {
@@ -149,6 +149,7 @@ export async function POST(request: Request) {
       ? fornecedoresPayload
           .map((item: { fornecedor?: string | null }) => item.fornecedor || "")
           .filter(Boolean)
+          .sort((a: string, b: string) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }))
       : [];
 
     return NextResponse.json({
