@@ -31,17 +31,17 @@ type Stats = {
   semEstoque: number;
 };
 
-type PageEntry = number | "ellipsis";
+type PageEntry = number | "ellipsis-back" | "ellipsis-forward";
 
 function exibirEstoque(valor?: number | null) {
   return valor == null ? "N/A" : valor;
 }
 
 function gerarPaginasVisiveis(atual: number, total: number): PageEntry[] {
-  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
-  if (atual <= 4) return [1, 2, 3, 4, 5, "ellipsis", total];
-  if (atual >= total - 3) return [1, "ellipsis", total - 4, total - 3, total - 2, total - 1, total];
-  return [1, "ellipsis", atual - 1, atual, atual + 1, "ellipsis", total];
+  if (total <= 9) return Array.from({ length: total }, (_, i) => i + 1);
+  if (atual <= 5) return [1, 2, 3, 4, 5, 6, "ellipsis-forward", total];
+  if (atual >= total - 4) return [1, "ellipsis-back", total - 5, total - 4, total - 3, total - 2, total - 1, total];
+  return [1, "ellipsis-back", atual - 2, atual - 1, atual, atual + 1, atual + 2, "ellipsis-forward", total];
 }
 
 export default function EstoquePage() {
@@ -138,6 +138,14 @@ export default function EstoquePage() {
   function irParaPagina(numero: number) {
     if (loading || numero === pagination.page || numero < 1 || numero > pagination.totalPages) return;
     setPage(numero);
+  }
+
+  function pularPaginas(direcao: "back" | "forward") {
+    const salto = 5;
+    const destino = direcao === "back"
+      ? Math.max(1, pagination.page - salto)
+      : Math.min(pagination.totalPages, pagination.page + salto);
+    irParaPagina(destino);
   }
 
   const resumoFornecedores = fornecedoresSelecionados.length === 0
@@ -241,11 +249,17 @@ export default function EstoquePage() {
           <nav className="estoque-pagination" aria-label="Paginação do estoque">
             <button className="button secondary" type="button" onClick={() => irParaPagina(pagination.page - 1)} disabled={loading || pagination.page <= 1} aria-label="Página anterior"><ChevronLeft size={16} /> Anterior</button>
             <div className="page-numbers">
-              {paginasVisiveis.map((item, index) => item === "ellipsis" ? (
-                <span key={`ellipsis-${index}`} className="page-ellipsis" aria-hidden="true">…</span>
-              ) : (
-                <button key={item} type="button" className={`page-number ${item === pagination.page ? "active" : ""}`} onClick={() => irParaPagina(item)} disabled={loading} aria-label={`Ir para página ${item}`} aria-current={item === pagination.page ? "page" : undefined}>{item}</button>
-              ))}
+              {paginasVisiveis.map((item, index) => {
+                if (item === "ellipsis-back") {
+                  return <button key={`ellipsis-back-${index}`} type="button" className="page-ellipsis" onClick={() => pularPaginas("back")} disabled={loading} aria-label="Voltar 5 páginas" title="Voltar 5 páginas">…</button>;
+                }
+                if (item === "ellipsis-forward") {
+                  return <button key={`ellipsis-forward-${index}`} type="button" className="page-ellipsis" onClick={() => pularPaginas("forward")} disabled={loading} aria-label="Avançar 5 páginas" title="Avançar 5 páginas">…</button>;
+                }
+                return (
+                  <button key={item} type="button" className={`page-number ${item === pagination.page ? "active" : ""}`} onClick={() => irParaPagina(item)} disabled={loading} aria-label={`Ir para página ${item}`} aria-current={item === pagination.page ? "page" : undefined}>{item}</button>
+                );
+              })}
             </div>
             <button className="button secondary" type="button" onClick={() => irParaPagina(pagination.page + 1)} disabled={loading || pagination.page >= pagination.totalPages} aria-label="Próxima página">Próxima <ChevronRight size={16} /></button>
           </nav>
