@@ -6,9 +6,11 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import styles from "./login.module.css";
 
+const ADMIN_USERNAME = "adminintercel";
+
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -16,17 +18,23 @@ export default function LoginPage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-    setLoading(true);
 
+    const normalizedUsername = username.trim().toLowerCase();
+    if (normalizedUsername !== ADMIN_USERNAME) {
+      setError("Usuário ou senha inválidos.");
+      return;
+    }
+
+    setLoading(true);
     const supabase = createClient();
     const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
+      email: `${ADMIN_USERNAME}@intercel.local`,
       password
     });
 
     if (signInError) {
       setLoading(false);
-      setError("E-mail ou senha inválidos.");
+      setError("Usuário ou senha inválidos.");
       return;
     }
 
@@ -46,18 +54,18 @@ export default function LoginPage() {
         </div>
 
         <h1 className={styles.title}>Acesso ao sistema</h1>
-        <p className={styles.subtitle}>Entre com o usuário criado no Supabase para continuar.</p>
+        <p className={styles.subtitle}>Entre com seu usuário e senha para continuar.</p>
 
         <form className={styles.form} onSubmit={handleSubmit}>
           <div className={styles.field}>
-            <label htmlFor="email">E-mail</label>
+            <label htmlFor="username">Usuário</label>
             <input
-              id="email"
-              name="email"
-              type="email"
+              id="username"
+              name="username"
+              type="text"
               autoComplete="username"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
               required
               autoFocus
             />
