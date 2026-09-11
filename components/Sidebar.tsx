@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Boxes, FileText, LayoutDashboard, PackageSearch, Settings, ShoppingBag, UsersRound } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { Boxes, FileText, LayoutDashboard, LogOut, PackageSearch, Settings, ShoppingBag, UsersRound } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 
 const items = [
   { href: "/", label: "Visão geral", icon: LayoutDashboard },
@@ -15,6 +16,14 @@ const items = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+
+  async function handleLogout() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.replace("/login");
+    router.refresh();
+  }
 
   return (
     <aside className="sidebar">
@@ -40,11 +49,23 @@ export function Sidebar() {
         </nav>
       </div>
 
-      <div className="sidebar-footer">
-        <div className="status-dot" />
-        <div>
-          <strong>TagPlus</strong>
-          <span>Integração preparada</span>
+      <div>
+        <button
+          type="button"
+          className="nav-item"
+          onClick={handleLogout}
+          style={{ width: "100%", border: 0, cursor: "pointer", background: "transparent", marginBottom: 12 }}
+        >
+          <LogOut size={18} />
+          <span>Sair</span>
+        </button>
+
+        <div className="sidebar-footer">
+          <div className="status-dot" />
+          <div>
+            <strong>TagPlus</strong>
+            <span>Integração preparada</span>
+          </div>
         </div>
       </div>
     </aside>
