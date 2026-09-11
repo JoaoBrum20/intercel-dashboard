@@ -110,20 +110,23 @@ export async function POST(request: Request) {
     const to = Math.min(from + pageSize - 1, maxTo);
 
     const statsParams = new URLSearchParams({ select: "total_produtos,estoque_total,sem_estoque" });
+    const movementStatsParams = new URLSearchParams({ select: "movimentados_hoje,movimentados_mes,parados_90d_com_estoque" });
     const fornecedoresParams = new URLSearchParams({ select: "fornecedor" });
 
-    const [pageResponse, statsResponse, fornecedoresResponse] = await Promise.all([
+    const [pageResponse, statsResponse, movementStatsResponse, fornecedoresResponse] = await Promise.all([
       supabaseGet(sourceView, pageParams, {
         Range: `${from}-${to}`,
         Prefer: "count=exact"
       }),
       supabaseGet("INTERCEL_ESTOQUE_STATS", statsParams),
+      supabaseGet("INTERCEL_MOVIMENTACAO_STATS", movementStatsParams),
       supabaseGet("INTERCEL_FORNECEDORES", fornecedoresParams)
     ]);
 
-    const [pagePayload, statsPayload, fornecedoresPayload] = await Promise.all([
+    const [pagePayload, statsPayload, movementStatsPayload, fornecedoresPayload] = await Promise.all([
       pageResponse.json().catch(() => null),
       statsResponse.json().catch(() => null),
+      movementStatsResponse.json().catch(() => null),
       fornecedoresResponse.json().catch(() => null)
     ]);
 
@@ -154,6 +157,7 @@ export async function POST(request: Request) {
     }));
 
     const statsRow = Array.isArray(statsPayload) && statsPayload[0] ? statsPayload[0] : {};
+    const movementStatsRow = Array.isArray(movementStatsPayload) && movementStatsPayload[0] ? movementStatsPayload[0] : {};
     const fornecedores = Array.isArray(fornecedoresPayload)
       ? fornecedoresPayload
           .map((item: { fornecedor?: string | null }) => item.fornecedor || "")
@@ -174,7 +178,10 @@ export async function POST(request: Request) {
       stats: {
         totalProdutos: Number(statsRow.total_produtos || 0),
         estoqueTotal: Number(statsRow.estoque_total || 0),
-        semEstoque: Number(statsRow.sem_estoque || 0)
+        semEstoque: Number(statsRow.sem_estoque || 0),
+        movimentadosHoje: Number(movementStatsRow.movimentados_hoje || 0),
+        movimentadosMes: Number(movementStatsRow.movimentados_mes || 0),
+        parados90dComEstoque: Number(movementStatsRow.parados_90d_com_estoque || 0)
       }
     });
   } catch (error) {
