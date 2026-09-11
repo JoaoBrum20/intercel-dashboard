@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Boxes, ChevronDown, ChevronLeft, ChevronRight, LoaderCircle, PackageMinus, RefreshCw, Search } from "lucide-react";
+import { Activity, Boxes, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Clock3, LoaderCircle, RefreshCw, Search, Store } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
 import { formatCurrency, formatNumber } from "@/lib/format";
@@ -29,9 +29,21 @@ type Stats = {
   totalProdutos: number;
   estoqueTotal: number;
   semEstoque: number;
+  movimentadosHoje: number;
+  movimentadosMes: number;
+  parados90dComEstoque: number;
 };
 
 type PageEntry = number | "ellipsis-back" | "ellipsis-forward";
+
+const EMPTY_STATS: Stats = {
+  totalProdutos: 0,
+  estoqueTotal: 0,
+  semEstoque: 0,
+  movimentadosHoje: 0,
+  movimentadosMes: 0,
+  parados90dComEstoque: 0
+};
 
 function exibirEstoque(valor?: number | null) {
   return valor == null ? "N/A" : valor;
@@ -69,7 +81,7 @@ export default function EstoquePage() {
   const [pageWindowStart, setPageWindowStart] = useState(2);
   const [stockItems, setStockItems] = useState<EstoqueItem[]>([]);
   const [pagination, setPagination] = useState<Pagination>({ page: 1, pageSize: 100, filteredCount: 0, totalPages: 1 });
-  const [stats, setStats] = useState<Stats>({ totalProdutos: 0, estoqueTotal: 0, semEstoque: 0 });
+  const [stats, setStats] = useState<Stats>(EMPTY_STATS);
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState("");
@@ -90,7 +102,7 @@ export default function EstoquePage() {
       setStockItems(Array.isArray(payload?.data) ? payload.data : []);
       setFornecedores(Array.isArray(payload?.fornecedores) ? payload.fornecedores : []);
       setPagination(payload?.pagination || { page: 1, pageSize: appliedPageSize, filteredCount: 0, totalPages: 1 });
-      setStats(payload?.stats || { totalProdutos: 0, estoqueTotal: 0, semEstoque: 0 });
+      setStats(payload?.stats || EMPTY_STATS);
       if (payload?.pagination?.page && payload.pagination.page !== page) setPage(payload.pagination.page);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao carregar estoque.");
@@ -188,10 +200,10 @@ export default function EstoquePage() {
       />
 
       <section className="stats-grid four">
-        <StatCard label="Produtos" value={formatNumber(stats.totalProdutos)} helper="Dados reais do estoque" icon={Boxes} />
-        <StatCard label="Estoque total" value={formatNumber(stats.estoqueTotal)} helper="Somatório das três lojas" icon={Boxes} />
-        <StatCard label="Sem estoque em uma loja" value={formatNumber(stats.semEstoque)} helper="Ponto de atenção" icon={PackageMinus} />
-        <StatCard label="Lojas" value="3" helper="Pádua, Itaperuna e Campos" icon={Boxes} />
+        <StatCard label="Lojas" value="3" helper="Pádua, Itaperuna e Campos" icon={Store} />
+        <StatCard label="Movimentados hoje" value={formatNumber(stats.movimentadosHoje)} helper="SKUs com alteração hoje" icon={Activity} />
+        <StatCard label="Movimentados no mês" value={formatNumber(stats.movimentadosMes)} helper="SKUs com alteração neste mês" icon={CalendarDays} />
+        <StatCard label="Parados +90 dias" value={formatNumber(stats.parados90dComEstoque)} helper="Com estoque em pelo menos uma loja" icon={Clock3} />
       </section>
 
       <section className="panel" aria-busy={loading}>
