@@ -6,12 +6,9 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import styles from "./login.module.css";
 
-const ADMIN_USERNAME = "adminintercel";
-const ADMIN_EMAIL = "adminintercel@intercel.local";
-
 export default function LoginPage() {
   const router = useRouter();
-  const [username, setUsername] = useState(ADMIN_USERNAME);
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -19,22 +16,17 @@ export default function LoginPage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-
-    if (username.trim().toLowerCase() !== ADMIN_USERNAME) {
-      setError("Usuário ou senha inválidos.");
-      return;
-    }
-
     setLoading(true);
+
     const supabase = createClient();
     const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: ADMIN_EMAIL,
+      email: email.trim(),
       password
     });
 
     if (signInError) {
       setLoading(false);
-      setError("Usuário ou senha inválidos.");
+      setError("E-mail ou senha inválidos.");
       return;
     }
 
@@ -54,18 +46,20 @@ export default function LoginPage() {
         </div>
 
         <h1 className={styles.title}>Acesso ao sistema</h1>
-        <p className={styles.subtitle}>Entre com o usuário administrativo para continuar.</p>
+        <p className={styles.subtitle}>Entre com o usuário criado no Supabase para continuar.</p>
 
         <form className={styles.form} onSubmit={handleSubmit}>
           <div className={styles.field}>
-            <label htmlFor="username">Usuário</label>
+            <label htmlFor="email">E-mail</label>
             <input
-              id="username"
-              name="username"
+              id="email"
+              name="email"
+              type="email"
               autoComplete="username"
-              value={username}
-              onChange={(event) => setUsername(event.target.value)}
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
               required
+              autoFocus
             />
           </div>
 
@@ -79,7 +73,6 @@ export default function LoginPage() {
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               required
-              autoFocus
             />
           </div>
 
